@@ -3,7 +3,6 @@ from tcod.console import Console
 
 from Source.Context import SCREEN_HEIGHT, WORLD_HEIGHT, WORLD_WIDTH
 
-
 def BiomeMap(Chars, Colors, console: Console):
     for x in range(WORLD_WIDTH):
         for y in range(WORLD_HEIGHT):

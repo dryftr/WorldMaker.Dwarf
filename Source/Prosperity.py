@@ -23,6 +23,6 @@ def Prosperity(World: List[List[Tile]]):
     for x in range(WORLD_WIDTH):
         for y in range(WORLD_HEIGHT):
             World[x][y].prosperity = (1.0 - abs(World[x][y].precip - 0.6) + 1.0 - abs(World[x][y].temp - 0.5) +
-                                      World[x][y].drainage) / 3
+                                      World[x][y].drainage) // 3
 
     return

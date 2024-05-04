@@ -1,1957 +1,1233 @@
-#
-# libtcod 1.5.1 python wrapper
-# Copyright (c) 2008,2009,2010 Jice & Mingos
-# All rights reserved.
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are met:
-#     * Redistributions of source code must retain the above copyright
-#       notice, this list of conditions and the following disclaimer.
-#     * Redistributions in binary form must reproduce the above copyright
-#       notice, this list of conditions and the following disclaimer in the
-#       documentation and/or other materials provided with the distribution.
-#     * The name of Jice or Mingos may not be used to endorse or promote products
-#       derived from this software without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY JICE AND MINGOS ``AS IS'' AND ANY
-# EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-# DISCLAIMED. IN NO EVENT SHALL JICE OR MINGOS BE LIABLE FOR ANY
-# DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
+import libtcodpy as libtcod
+import time
+from random import randint
+from random import uniform
+import cProfile
 
-import sys
-import ctypes
-import struct
-from ctypes import *
+## MY IMPORTS - THIS IS TO HANDLE THE WORLDGEN DATA DISPLAY IN THE SECONDARY CONSOLE ##
+import os
+import logging
+## handle the setup for logging now if this is running on Linux variants
+if os.name == 'nt':  # Windows
+    print("Windows OS detected. Logging disabled. Using console instead.")
+elif os.name == 'posix':  # Linux
+    # Set up the root logger
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)  # Set to the lowest level to catch all messages
 
-if not hasattr(ctypes, "c_bool"):   # for Python < 2.6
-    c_bool = c_uint8
+    # Set up a file handler for DEBUG level
+    debug_file_handler = logging.FileHandler('output.log', mode='a')
+    debug_file_handler.setLevel(logging.DEBUG)
+    debug_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s',"%Y-%m-%d %H:%M:%S")
+    debug_file_handler.setFormatter(debug_formatter)
+    logger.addHandler(debug_file_handler)
 
-try:  #import NumPy if available
-    import numpy
-    numpy_available = True
-except ImportError:
-    numpy_available = False
+    # Set up a StreamHandler for DEBUG level that outputs to stderr
+    debug_stream_handler = logging.StreamHandler()
+    debug_stream_handler.setLevel(logging.DEBUG)
+    debug_stream_handler.setFormatter(debug_formatter)
+    logger.addHandler(debug_stream_handler)
 
-LINUX=False
-MAC=False
-MINGW=False
-MSVC=False
-if sys.platform.find('linux') != -1:
-    _lib = ctypes.cdll['./libtcod.so']
-    LINUX=True
-elif sys.platform.find('darwin') != -1:
-    _lib = ctypes.cdll['./libtcod.dylib']
-    MAC = True
-elif sys.platform.find('haiku') != -1:
-    _lib = ctypes.cdll['./libtcod.so']
-    HAIKU = True
-else:
-    try:
-        _lib = ctypes.cdll['./libtcod-mingw.dll']
-        MINGW=True
-    except WindowsError:
-        _lib = ctypes.cdll['./libtcod-VS.dll']
-        MSVC=True
-    # On Windows, ctypes doesn't work well with function returning structs,
-    # so we have to user the _wrapper functions instead
-    _lib.TCOD_color_multiply = _lib.TCOD_color_multiply_wrapper
-    _lib.TCOD_color_add = _lib.TCOD_color_add_wrapper
-    _lib.TCOD_color_multiply_scalar = _lib.TCOD_color_multiply_scalar_wrapper
-    _lib.TCOD_color_subtract = _lib.TCOD_color_subtract_wrapper
-    _lib.TCOD_color_lerp = _lib.TCOD_color_lerp_wrapper
-    _lib.TCOD_console_get_default_background = _lib.TCOD_console_get_default_background_wrapper
-    _lib.TCOD_console_get_default_foreground = _lib.TCOD_console_get_default_foreground_wrapper
-    _lib.TCOD_console_get_char_background = _lib.TCOD_console_get_char_background_wrapper
-    _lib.TCOD_console_get_char_foreground = _lib.TCOD_console_get_char_foreground_wrapper
-    _lib.TCOD_console_get_fading_color = _lib.TCOD_console_get_fading_color_wrapper
-    _lib.TCOD_image_get_pixel = _lib.TCOD_image_get_pixel_wrapper
-    _lib.TCOD_image_get_mipmap_pixel = _lib.TCOD_image_get_mipmap_pixel_wrapper
-    _lib.TCOD_parser_get_color_property = _lib.TCOD_parser_get_color_property_wrapper
+    # Log an example message at each level
+    logger.info("Linux OS detected. Logging started.")
+    logger.info("----------------------------------------------")
 
-HEXVERSION = 0x010501
-STRVERSION = "1.5.1"
-TECHVERSION = 0x01050103
 
-############################
-# color module
-############################
-class Color(Structure):
-    _fields_ = [('r', c_uint8),
-                ('g', c_uint8),
-                ('b', c_uint8),
-                ]
+pr = cProfile.Profile()
+pr.enable()
 
-    def __eq__(self, c):
-        return _lib.TCOD_color_equals(self, c)
+WORLD_WIDTH = 200
+WORLD_HEIGHT = 80
 
-    def __mul__(self, c):
-        if isinstance(c,Color):
-            return _lib.TCOD_color_multiply(self, c)
-        else:
-            return _lib.TCOD_color_multiply_scalar(self, c_float(c))
+SCREEN_WIDTH = 200
+SCREEN_HEIGHT = 80
 
-    def __add__(self, c):
-        return _lib.TCOD_color_add(self, c)
+CIVILIZED_CIVS = 2
+TRIBAL_CIVS = 2
 
-    def __sub__(self, c):
-        return _lib.TCOD_color_subtract(self, c)
+MIN_RIVER_LENGHT = 3
 
-    def __repr__(self):
-        return "Color(%d,%d,%d)" % (self.r, self.g, self.b)
+CIV_MAX_SITES = 20
+EXPANSION_DISTANCE = 10
+WAR_DISTANCE = 8
 
-    def __getitem__(self, i):
-        if type(i) == str:
-            return getattr(self, i)
-        else:
-            return getattr(self, "rgb"[i])
 
-    def __setitem__(self, i, c):
-        if type(i) == str:
-            setattr(self, i, c)
-        else:
-            setattr(self, "rgb"[i], c)
+###################################################################################### - Classes - ######################################################################################
 
-    def __iter__(self):
-        yield self.r
-        yield self.g
-        yield self.b
+class Tile:
 
-# Should be valid on any platform, check it!  Has to be done after Color is defined.
-if MAC:
-    from cprotos import setup_protos
-    setup_protos(_lib)
-
-_lib.TCOD_color_equals.restype = c_bool
-_lib.TCOD_color_multiply.restype = Color
-_lib.TCOD_color_multiply_scalar.restype = Color
-_lib.TCOD_color_add.restype = Color
-_lib.TCOD_color_subtract.restype = Color
-
-# default colors
-# grey levels
-black=Color(0,0,0)
-darkest_grey=Color(31,31,31)
-darker_grey=Color(63,63,63)
-dark_grey=Color(95,95,95)
-grey=Color(127,127,127)
-light_grey=Color(159,159,159)
-lighter_grey=Color(191,191,191)
-lightest_grey=Color(223,223,223)
-darkest_gray=Color(31,31,31)
-darker_gray=Color(63,63,63)
-dark_gray=Color(95,95,95)
-gray=Color(127,127,127)
-light_gray=Color(159,159,159)
-lighter_gray=Color(191,191,191)
-lightest_gray=Color(223,223,223)
-white=Color(255,255,255)
-
-# sepia
-darkest_sepia=Color(31,24,15)
-darker_sepia=Color(63,50,31)
-dark_sepia=Color(94,75,47)
-sepia=Color(127,101,63)
-light_sepia=Color(158,134,100)
-lighter_sepia=Color(191,171,143)
-lightest_sepia=Color(222,211,195)
-
-#standard colors
-red=Color(255,0,0)
-flame=Color(255,63,0)
-orange=Color(255,127,0)
-amber=Color(255,191,0)
-yellow=Color(255,255,0)
-lime=Color(191,255,0)
-chartreuse=Color(127,255,0)
-green=Color(0,255,0)
-sea=Color(0,255,127)
-turquoise=Color(0,255,191)
-cyan=Color(0,255,255)
-sky=Color(0,191,255)
-azure=Color(0,127,255)
-blue=Color(0,0,255)
-han=Color(63,0,255)
-violet=Color(127,0,255)
-purple=Color(191,0,255)
-fuchsia=Color(255,0,255)
-magenta=Color(255,0,191)
-pink=Color(255,0,127)
-crimson=Color(255,0,63)
-
-# dark colors
-dark_red=Color(191,0,0)
-dark_flame=Color(191,47,0)
-dark_orange=Color(191,95,0)
-dark_amber=Color(191,143,0)
-dark_yellow=Color(191,191,0)
-dark_lime=Color(143,191,0)
-dark_chartreuse=Color(95,191,0)
-dark_green=Color(0,191,0)
-dark_sea=Color(0,191,95)
-dark_turquoise=Color(0,191,143)
-dark_cyan=Color(0,191,191)
-dark_sky=Color(0,143,191)
-dark_azure=Color(0,95,191)
-dark_blue=Color(0,0,191)
-dark_han=Color(47,0,191)
-dark_violet=Color(95,0,191)
-dark_purple=Color(143,0,191)
-dark_fuchsia=Color(191,0,191)
-dark_magenta=Color(191,0,143)
-dark_pink=Color(191,0,95)
-dark_crimson=Color(191,0,47)
-
-# darker colors
-darker_red=Color(127,0,0)
-darker_flame=Color(127,31,0)
-darker_orange=Color(127,63,0)
-darker_amber=Color(127,95,0)
-darker_yellow=Color(127,127,0)
-darker_lime=Color(95,127,0)
-darker_chartreuse=Color(63,127,0)
-darker_green=Color(0,127,0)
-darker_sea=Color(0,127,63)
-darker_turquoise=Color(0,127,95)
-darker_cyan=Color(0,127,127)
-darker_sky=Color(0,95,127)
-darker_azure=Color(0,63,127)
-darker_blue=Color(0,0,127)
-darker_han=Color(31,0,127)
-darker_violet=Color(63,0,127)
-darker_purple=Color(95,0,127)
-darker_fuchsia=Color(127,0,127)
-darker_magenta=Color(127,0,95)
-darker_pink=Color(127,0,63)
-darker_crimson=Color(127,0,31)
-
-# darkest colors
-darkest_red=Color(63,0,0)
-darkest_flame=Color(63,15,0)
-darkest_orange=Color(63,31,0)
-darkest_amber=Color(63,47,0)
-darkest_yellow=Color(63,63,0)
-darkest_lime=Color(47,63,0)
-darkest_chartreuse=Color(31,63,0)
-darkest_green=Color(0,63,0)
-darkest_sea=Color(0,63,31)
-darkest_turquoise=Color(0,63,47)
-darkest_cyan=Color(0,63,63)
-darkest_sky=Color(0,47,63)
-darkest_azure=Color(0,31,63)
-darkest_blue=Color(0,0,63)
-darkest_han=Color(15,0,63)
-darkest_violet=Color(31,0,63)
-darkest_purple=Color(47,0,63)
-darkest_fuchsia=Color(63,0,63)
-darkest_magenta=Color(63,0,47)
-darkest_pink=Color(63,0,31)
-darkest_crimson=Color(63,0,15)
-
-# light colors
-light_red=Color(255,114,114)
-light_flame=Color(255,149,114)
-light_orange=Color(255,184,114)
-light_amber=Color(255,219,114)
-light_yellow=Color(255,255,114)
-light_lime=Color(219,255,114)
-light_chartreuse=Color(184,255,114)
-light_green=Color(114,255,114)
-light_sea=Color(114,255,184)
-light_turquoise=Color(114,255,219)
-light_cyan=Color(114,255,255)
-light_sky=Color(114,219,255)
-light_azure=Color(114,184,255)
-light_blue=Color(114,114,255)
-light_han=Color(149,114,255)
-light_violet=Color(184,114,255)
-light_purple=Color(219,114,255)
-light_fuchsia=Color(255,114,255)
-light_magenta=Color(255,114,219)
-light_pink=Color(255,114,184)
-light_crimson=Color(255,114,149)
-
-#lighter colors
-lighter_red=Color(255,165,165)
-lighter_flame=Color(255,188,165)
-lighter_orange=Color(255,210,165)
-lighter_amber=Color(255,232,165)
-lighter_yellow=Color(255,255,165)
-lighter_lime=Color(232,255,165)
-lighter_chartreuse=Color(210,255,165)
-lighter_green=Color(165,255,165)
-lighter_sea=Color(165,255,210)
-lighter_turquoise=Color(165,255,232)
-lighter_cyan=Color(165,255,255)
-lighter_sky=Color(165,232,255)
-lighter_azure=Color(165,210,255)
-lighter_blue=Color(165,165,255)
-lighter_han=Color(188,165,255)
-lighter_violet=Color(210,165,255)
-lighter_purple=Color(232,165,255)
-lighter_fuchsia=Color(255,165,255)
-lighter_magenta=Color(255,165,232)
-lighter_pink=Color(255,165,210)
-lighter_crimson=Color(255,165,188)
-
-# lightest colors
-lightest_red=Color(255,191,191)
-lightest_flame=Color(255,207,191)
-lightest_orange=Color(255,223,191)
-lightest_amber=Color(255,239,191)
-lightest_yellow=Color(255,255,191)
-lightest_lime=Color(239,255,191)
-lightest_chartreuse=Color(223,255,191)
-lightest_green=Color(191,255,191)
-lightest_sea=Color(191,255,223)
-lightest_turquoise=Color(191,255,239)
-lightest_cyan=Color(191,255,255)
-lightest_sky=Color(191,239,255)
-lightest_azure=Color(191,223,255)
-lightest_blue=Color(191,191,255)
-lightest_han=Color(207,191,255)
-lightest_violet=Color(223,191,255)
-lightest_purple=Color(239,191,255)
-lightest_fuchsia=Color(255,191,255)
-lightest_magenta=Color(255,191,239)
-lightest_pink=Color(255,191,223)
-lightest_crimson=Color(255,191,207)
-
-# desaturated colors
-desaturated_red=Color(127,63,63)
-desaturated_flame=Color(127,79,63)
-desaturated_orange=Color(127,95,63)
-desaturated_amber=Color(127,111,63)
-desaturated_yellow=Color(127,127,63)
-desaturated_lime=Color(111,127,63)
-desaturated_chartreuse=Color(95,127,63)
-desaturated_green=Color(63,127,63)
-desaturated_sea=Color(63,127,95)
-desaturated_turquoise=Color(63,127,111)
-desaturated_cyan=Color(63,127,127)
-desaturated_sky=Color(63,111,127)
-desaturated_azure=Color(63,95,127)
-desaturated_blue=Color(63,63,127)
-desaturated_han=Color(79,63,127)
-desaturated_violet=Color(95,63,127)
-desaturated_purple=Color(111,63,127)
-desaturated_fuchsia=Color(127,63,127)
-desaturated_magenta=Color(127,63,111)
-desaturated_pink=Color(127,63,95)
-desaturated_crimson=Color(127,63,79)
-
-# metallic
-brass=Color(191,151,96)
-copper=Color(197,136,124)
-gold=Color(229,191,0)
-silver=Color(203,203,203)
-
-# miscellaneous
-celadon=Color(172,255,175)
-peach=Color(255,159,127)
-
-# color functions
-_lib.TCOD_color_lerp.restype = Color
-def color_lerp(c1, c2, a):
-    return _lib.TCOD_color_lerp(c1, c2, c_float(a))
-
-def color_set_hsv(c, h, s, v):
-    _lib.TCOD_color_set_HSV(byref(c), c_float(h), c_float(s), c_float(v))
-
-def color_get_hsv(c):
-    h = c_float()
-    s = c_float()
-    v = c_float()
-    _lib.TCOD_color_get_HSV(c, byref(h), byref(s), byref(v))
-    return h.value, s.value, v.value
-
-def color_scale_HSV(c, scoef, vcoef) :
-    _lib.TCOD_color_scale_HSV(byref(c),c_float(scoef),c_float(vcoef))
-
-def color_gen_map(colors, indexes):
-    ccolors = (Color * len(colors))(*colors)
-    cindexes = (c_int * len(indexes))(*indexes)
-    cres = (Color * (max(indexes) + 1))()
-    _lib.TCOD_color_gen_map(cres, len(colors), ccolors, cindexes)
-    return cres
-
-############################
-# console module
-############################
-class Key(Structure):
-    _fields_=[('vk', c_int),
-              ('c', c_uint8),
-              ('pressed', c_bool),
-              ('lalt', c_bool),
-              ('lctrl', c_bool),
-              ('ralt', c_bool),
-              ('rctrl', c_bool),
-              ('shift', c_bool),
-              ]
-
-class ConsoleBuffer:
-    # simple console that allows direct (fast) access to cells. simplifies
-    # use of the "fill" functions.
-    def __init__(self, width, height, back_r=0, back_g=0, back_b=0, fore_r=0, fore_g=0, fore_b=0, char=' '):
-        # initialize with given width and height. values to fill the buffer
-        # are optional, defaults to black with no characters.
-        n = width * height
-        self.width = width
+    def __init__(self, height, temp, precip, drainage, biome):
+        self.temp = temp
         self.height = height
-        self.clear(back_r, back_g, back_b, fore_r, fore_g, fore_b, char)
+        self.precip = precip
+        self.drainage = drainage
+        self.biome = biome
 
-    def clear(self, back_r=0, back_g=0, back_b=0, fore_r=0, fore_g=0, fore_b=0, char=' '):
-        # clears the console. values to fill it with are optional, defaults
-        # to black with no characters.
-        n = self.width * self.height
-        self.back_r = [back_r] * n
-        self.back_g = [back_g] * n
-        self.back_b = [back_b] * n
-        self.fore_r = [fore_r] * n
-        self.fore_g = [fore_g] * n
-        self.fore_b = [fore_b] * n
-        self.char = [ord(char)] * n
+    hasRiver = False
+    isCiv = False
+
+    biomeID = 0
+    prosperity = 0
+
+
+class Race:
+
+    def __init__(self, Name, PrefBiome, Strenght, Size, ReproductionSpeed, Aggressiveness, Form):
+        self.Name = Name
+        self.PrefBiome = PrefBiome
+        self.Strenght = Strenght
+        self.Size = Size
+        self.ReproductionSpeed = ReproductionSpeed
+        self.Aggressiveness = Aggressiveness
+        self.Form = Form
+
+
+class CivSite:
+
+    def __init__(self, x, y, category, suitable, popcap):
+        self.x = x
+        self.y = y
+        self.category = category
+        self.suitable = suitable
+        self.popcap = popcap
+
+    Population = 0
+
+    isCapital = False
+
+
+class Army:
+
+    def __init__(self, x, y, Civ, Size):
+        self.x = x
+        self.y = y
+        self.Civ = Civ
+        self.Size = Size
+
+
+class Civ:
+
+    def __init__(self, Race, Name, Government, Color, Flag, Aggression):
+        self.Name = Name
+        self.Race = Race
+        self.Government = Government
+        self.Color = Color
+        self.Flag = Flag
+        self.Aggression = Race.Aggressiveness + Government.Aggressiveness
+
+    def PrintInfo(self):
+        display_data(
+            self.Name)
+        display_data(
+            self.Race.Name)
+        display_data(
+            self.Government.Name)
+        display_data("Aggression: {}".format(self.Aggression))
+        display_data("Suitable Sites: {}\n".format(len(self.SuitableSites)))
+
+    Sites = []
+    SuitableSites = []
+
+    atWar = False
+
+    Army = Army(None, None, None, None)
+    TotalPopulation = 0
+
+
+class GovernmentType:
+
+    def __init__(self, Name, Description, Aggressiveness, Militarization, TechBonus):
+        self.Name = Name
+        self.Description = Description
+        self.Aggressiveness = Aggressiveness
+        self.Militarization = Militarization
+        self.TechBonus = TechBonus
+
+
+class War:
+
+    def __init__(self, Side1, Side2):
+        self.Side1 = Side1
+        self.Side2 = Side2
+
+
+##################################################################################### - Functions - #####################################################################################
+
+# - General Functions -
+
+def display_data(data):
+    """
+    Display data by printing or logging depending on the operating system.
+    On Windows, it prints to the console; on Linux, it logs to a file.
+
+    Parameters:
+    - data: The data to be displayed.
+
+    Returns:
+    None
+    """
+    if os.name == 'nt':  # Windows
+        print(data)
+    elif os.name == 'posix':  # Linux
+        logger.info(data)
+    # honestly I'd like to be able to support other OS's as well, but need to figure out how to do that.
+    #else:
+    #    raise NotImplementedError("OS not supported.")
+
+def ClearConsole():
+    ### NOTE FOR ME: This never triggered an error...could this be the "second console"? need to track this code better.
+    for x in list(range(SCREEN_WIDTH)):
+        for y in list(range(SCREEN_HEIGHT)):
+            libtcod.console_put_char_ex(0, x, y, ' ', libtcod.black, libtcod.black)
+
+    libtcod.console_flush()
+
+    return
+
+
+def PointDistRound(pt1x, pt1y, pt2x, pt2y):
+    distance = abs(pt2x - pt1x) + abs(pt2y - pt1y);
+
+    distance = round(distance)
+
+    return distance
+
+
+def FlagGenerator(Color):
+    Flag = [[0 for a in range(4)] for b in range(12)]
+
+    BackColor1 = Color
+    BackColor2 = Palette[randint(0, len(Palette) - 1)]
+
+    OverColor1 = Palette[randint(0, len(Palette) - 1)]
+    OverColor2 = Palette[randint(0, len(Palette) - 1)]
+
+    BackFile = open("Background.txt", 'r')
+    OverlayFile = open("Overlay.txt", 'r')
+
+    BTypes = (sum(1 for line in open('Background.txt')) + 1) / 5
+    OTypes = (sum(1 for line in open('Overlay.txt')) + 1) / 5
+
+    Back = randint(1, BTypes)
+    Overlay = randint(1, OTypes)
+
+    for a in range(53 * (Back - 1)):
+        C = BackFile.read(1)
+
+    for a in range(53 * (Overlay - 1)):
+        C = OverlayFile.read(1)
+
+    for y in range(4):
+        for x in range(12):
+
+            C = BackFile.read(1)
+            while C == '\n':
+                C = BackFile.read(1)
+
+            if C == '#':
+                Flag[x][y] = BackColor1
+            elif C == '"':
+                Flag[x][y] = BackColor2
+
+            C = OverlayFile.read(1)
+            while C == '\n':
+                C = OverlayFile.read(1)
+
+            if C == '#':
+                Flag[x][y] = OverColor1
+            elif C == '"':
+                Flag[x][y] = OverColor2
+
+    BackFile.close()
+    OverlayFile.close()
+
+    return Flag
+
+
+def LowestNeighbour(X, Y, World):  # Diagonals are commented for rivers
+
+    minval = 1
+
+    x = 0
+    y = 0
+
+    if World[X + 1][Y].height < minval and X + 1 < WORLD_WIDTH:
+        minval = World[X + 1][Y].height
+        x = X + 1
+        y = Y
+
+    if World[X][Y + 1].height < minval and Y + 1 < WORLD_HEIGHT:
+        minval = World[X][Y + 1].height
+        x = X
+        y = Y + 1
+
+    # if libtcod.heightmap_get_value(hm, X + 1, Y + 1) < minval and X + 1 < WORLD_WIDTH and Y + 1 < WORLD_HEIGHT and minval > 0.2:
+    # minval = libtcod.heightmap_get_value(hm, X + 1, Y + 1)
+    # x = X + 1
+    # y = Y + 1
+
+    # if libtcod.heightmap_get_value(hm, X - 1, Y - 1) < minval and X - 1 > 0 and Y - 1 > 0 and minval > 0.2:
+    # minval = libtcod.heightmap_get_value(hm, X - 1, Y - 1)
+    # x = X - 1
+    # y = Y - 1
+
+    if World[X - 1][Y].height < minval and X - 1 > 0:
+        minval = World[X - 1][Y].height
+        x = X - 1
+        y = Y
+
+    if World[X][Y - 1].height < minval and Y - 1 > 0:
+        minval = World[X][Y - 1].height
+        x = X
+        y = Y - 1
+
+    # f libtcod.heightmap_get_value(hm, X + 1, Y - 1) < minval and X + 1 < WORLD_WIDTH and Y - 1 > 0 and minval > 0.2:
+    # minval = libtcod.heightmap_get_value(hm, X + 1, Y - 1)
+    # x = X + 1
+    # y = Y - 1
+
+    # if libtcod.heightmap_get_value(hm, X - 1, Y + 1) < minval and X - 1 > 0 and Y + 1 < WORLD_HEIGHT and minval > 0.2 :
+    # minval = libtcod.heightmap_get_value(hm, X - 1, Y + 1)
+    # x = X - 1
+    # y = Y + 1
+
+    error = 0
+
+    if x == 0 and y == 0:
+        error = 1
+
+    return (x, y, error)
+
+
+# - MapGen Functions -
+
+def PoleGen(hm, NS):
+    if NS == 0:
+        rng = randint(2, 5)
+        for i in range(WORLD_WIDTH):
+            for j in range(rng):
+                libtcod.heightmap_set_value(hm, i, WORLD_HEIGHT - 1 - j, 0.31)
+            rng += randint(1, 3) - 2
+            if rng > 6:
+                rng = 5
+            if rng < 2:
+                rng = 2
+
+    if NS == 1:
+        rng = randint(2, 5)
+        for i in range(WORLD_WIDTH):
+            for j in range(rng):
+                libtcod.heightmap_set_value(hm, i, j, 0.31)
+            rng += randint(1, 3) - 2
+            if rng > 6:
+                rng = 5
+            if rng < 2:
+                rng = 2
+
+    return
+
+
+def TectonicGen(hm, hor):
+    TecTiles = [[0 for y in range(WORLD_HEIGHT)] for x in range(WORLD_WIDTH)]
+
+    # Define Tectonic Borders
+    if hor == 1:
+        pos = randint(WORLD_HEIGHT / 10, WORLD_HEIGHT - WORLD_HEIGHT / 10)
+        for x in range(WORLD_WIDTH):
+            TecTiles[x][pos] = 1
+            pos += randint(1, 5) - 3
+            if pos < 0:
+                pos = 0
+            if pos > WORLD_HEIGHT - 1:
+                pos = WORLD_HEIGHT - 1
+    if hor == 0:
+        pos = randint(WORLD_WIDTH / 10, WORLD_WIDTH - WORLD_WIDTH / 10)
+        for y in range(WORLD_HEIGHT):
+            TecTiles[pos][y] = 1
+            pos += randint(1, 5) - 3
+            if pos < 0:
+                pos = 0
+            if pos > WORLD_WIDTH - 1:
+                pos = WORLD_WIDTH - 1
+
+    # Apply elevation to borders.
+    for x in list(range(WORLD_WIDTH // 10, WORLD_WIDTH - WORLD_WIDTH // 10)):
+        for y in list(range(WORLD_HEIGHT // 10, WORLD_HEIGHT - WORLD_HEIGHT // 10)):
+            if TecTiles[x][y] == 1 and libtcod.heightmap_get_value(hm, x, y) > 0.3:
+                libtcod.heightmap_add_hill(hm, x, y, randint(2, 4), uniform(0.15, 0.18))
+
+    return
+
+
+def Temperature(temp, hm):
+    # This needed to be upgraded to Python3 using list(range()) instead of xrange()
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
+            heighteffect = 0
+            if y > WORLD_HEIGHT / 2:
+                libtcod.heightmap_set_value(temp, x, y, WORLD_HEIGHT - y - heighteffect)
+            else:
+                libtcod.heightmap_set_value(temp, x, y, y - heighteffect)
+            heighteffect = libtcod.heightmap_get_value(hm, x, y)
+            if heighteffect > 0.8:
+                heighteffect = heighteffect * 5
+                if y > WORLD_HEIGHT / 2:
+                    libtcod.heightmap_set_value(temp, x, y, WORLD_HEIGHT - y - heighteffect)
+                else:
+                    libtcod.heightmap_set_value(temp, x, y, y - heighteffect)
+            if heighteffect < 0.25:
+                heighteffect = heighteffect * 10
+                if y > WORLD_HEIGHT / 2:
+                    libtcod.heightmap_set_value(temp, x, y, WORLD_HEIGHT - y - heighteffect)
+                else:
+                    libtcod.heightmap_set_value(temp, x, y, y - heighteffect)
+
+    return
+
+
+def Percipitaion(preciphm, temphm):
+    libtcod.heightmap_add(preciphm, 2)
+
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
+            temp = libtcod.heightmap_get_value(temphm, x, y)
+
+    precip = libtcod.noise_new(2, libtcod.NOISE_DEFAULT_HURST, libtcod.NOISE_DEFAULT_LACUNARITY)
+
+    libtcod.heightmap_add_fbm(preciphm, precip, 2, 2, 0, 0, 32, 1, 1)
+
+    libtcod.heightmap_normalize(preciphm, 0.0, 1.0)
+
+    return
+
+
+def RiverGen(World):
+    X = randint(0, WORLD_WIDTH - 1)
+    Y = randint(0, WORLD_HEIGHT - 1)
+
+    XCoor = []
+    YCoor = []
+
+    tries = 0
+
+    prev = ""
+
+    while World[X][Y].height < 0.8:
+        tries += 1
+        X = randint(0, WORLD_WIDTH - 1)
+        Y = randint(0, WORLD_HEIGHT - 1)
+
+        if tries > 2000:
+            return
+
+    del XCoor[:]
+    del YCoor[:]
+
+    XCoor.append(X)
+    YCoor.append(Y)
+
+    while World[X][Y].height >= 0.2:
+
+        X, Y, error = LowestNeighbour(X, Y, World)
+
+        if error == 1:
+            return
+
+        try:
+            if World[X][Y].hasRiver or World[X + 1][Y].hasRiver or World[X - 1][Y].hasRiver or World[X][
+                Y + 1].hasRiver or World[X][Y - 1].hasRiver:
+                break
+        except IndexError:
+            return
+
+        if X in XCoor and Y in YCoor:
+            break
+
+        XCoor.append(X)
+        YCoor.append(Y)
+
+    if len(XCoor) <= MIN_RIVER_LENGHT:
+        return
+
+    for x in range(len(XCoor)):
+        if World[XCoor[x]][YCoor[x]].height < 0.2:
+            break
+        World[XCoor[x]][YCoor[x]].hasRiver = True
+        if World[XCoor[x]][YCoor[x]].height >= 0.2 and x == len(XCoor):
+            World[XCoor[x]][YCoor[
+                x]].hasRiver = True  # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~Change to Lake later
+
+    return
+
+
+def Prosperity(World):
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
+            World[x][y].prosperity = (1.0 - abs(World[x][y].precip - 0.6) + 1.0 - abs(World[x][y].temp - 0.5) +
+                                        World[x][y].drainage) / 3
+
+    return
+
+
+def MasterWorldGen():  # ------------------------------------------------------- * MASTER GEN * -------------------------------------------------------------
+
+    display_data(' * World Gen START * ')
+    starttime = time.time()
+
+    # Heightmap
+    hm = libtcod.heightmap_new(WORLD_WIDTH, WORLD_HEIGHT)
+
+    for i in range(250):
+        libtcod.heightmap_add_hill(hm, randint(WORLD_WIDTH / 10, WORLD_WIDTH - WORLD_WIDTH / 10),
+                                    randint(WORLD_HEIGHT / 10, WORLD_HEIGHT - WORLD_HEIGHT / 10), randint(12, 16),
+                                    randint(6, 10))
+    display_data('- Main Hills -')
+
+    for i in range(1000):
+        libtcod.heightmap_add_hill(hm, randint(WORLD_WIDTH / 10, WORLD_WIDTH - WORLD_WIDTH / 10),
+                                    randint(WORLD_HEIGHT / 10, WORLD_HEIGHT - WORLD_HEIGHT / 10), randint(2, 4),
+                                    randint(6, 10))
+    display_data('- Small Hills -')
+
+    libtcod.heightmap_normalize(hm, 0.0, 1.0)
+
+    noisehm = libtcod.heightmap_new(WORLD_WIDTH, WORLD_HEIGHT)
+    noise2d = libtcod.noise_new(2, libtcod.NOISE_DEFAULT_HURST, libtcod.NOISE_DEFAULT_LACUNARITY)
+    libtcod.heightmap_add_fbm(noisehm, noise2d, 6, 6, 0, 0, 32, 1, 1)
+    libtcod.heightmap_normalize(noisehm, 0.0, 1.0)
+    libtcod.heightmap_multiply_hm(hm, noisehm, hm)
+    display_data('- Apply Simplex -')
+
+    PoleGen(hm, 0)
+    display_data('- South Pole -')
+
+    PoleGen(hm, 1)
+    display_data('- North Pole -')
+
+    TectonicGen(hm, 0)
+    TectonicGen(hm, 1)
+    display_data('- Tectonic Gen -')
+    libtcod.heightmap_rain_erosion(hm, WORLD_WIDTH * WORLD_HEIGHT, 0.07, 0, 0)
     
-    def copy(self):
-        # returns a copy of this ConsoleBuffer.
-        other = ConsoleBuffer(0, 0)
-        other.width = self.width
-        other.height = self.height
-        other.back_r = list(self.back_r)  # make explicit copies of all lists
-        other.back_g = list(self.back_g)
-        other.back_b = list(self.back_b)
-        other.fore_r = list(self.fore_r)
-        other.fore_g = list(self.fore_g)
-        other.fore_b = list(self.fore_b)
-        other.char = list(self.char)
-        return other
+    display_data('- Erosion -')
+    libtcod.heightmap_clamp(hm, 0.0, 1.0)
+
+    # Temperature
+    temp = libtcod.heightmap_new(WORLD_WIDTH, WORLD_HEIGHT)
+    Temperature(temp, hm)
+    libtcod.heightmap_normalize(temp, 0.0, 1.0)
+    display_data('- Temperature Calculation -')
+
+    # Precipitation
+
+    preciphm = libtcod.heightmap_new(WORLD_WIDTH, WORLD_HEIGHT)
+    Percipitaion(preciphm, temp)
+    libtcod.heightmap_normalize(preciphm, 0.0, 1.0)
+    display_data('- Percipitaion Calculation -')
+
+    # Drainage
+
+    drainhm = libtcod.heightmap_new(WORLD_WIDTH, WORLD_HEIGHT)
+    drain = libtcod.noise_new(2, libtcod.NOISE_DEFAULT_HURST, libtcod.NOISE_DEFAULT_LACUNARITY)
+    libtcod.heightmap_add_fbm(drainhm, drain, 2, 2, 0, 0, 32, 1, 1)
+    libtcod.heightmap_normalize(drainhm, 0.0, 1.0)
+    display_data('- Drainage Calculation -')
+
+    # VOLCANISM - RARE AT SEA FOR NEW ISLANDS (?) RARE AT MOUNTAINS > 0.9 (?) RARE AT TECTONIC BORDERS (?)
+
+    elapsed_time = time.time() - starttime
+    display_data(' * World Gen DONE *  in: {} seconds'.format(elapsed_time))
+
+    # Initialize Tiles with Map values
+    World = [[0 for y in range(WORLD_HEIGHT)] for x in range(WORLD_WIDTH)]
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
+            World[x][y] = Tile(libtcod.heightmap_get_value(hm, x, y),
+                               libtcod.heightmap_get_value(temp, x, y),
+                               libtcod.heightmap_get_value(preciphm, x, y),
+                               libtcod.heightmap_get_value(drainhm, x, y),
+                               0)
+
+    display_data('- Tiles Initialized -')
+
+    # Prosperity
+
+    Prosperity(World)
+    display_data('- Prosperity Calculation -')
+
+    # Biome info to Tile
+
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
+
+            if World[x][y].precip >= 0.10 and World[x][y].precip < 0.33 and World[x][y].drainage < 0.5:
+                World[x][y].biomeID = 3
+                if randint(1, 2) == 2:
+                    World[x][y].biomeID = 16
+
+            if World[x][y].precip >= 0.10 and World[x][y].precip > 0.33:
+                World[x][y].biomeID = 2
+                if World[x][y].precip >= 0.66:
+                    World[x][y].biomeID = 1
+
+            if World[x][y].precip >= 0.33 and World[x][y].precip < 0.66 and World[x][y].drainage >= 0.33:
+                World[x][y].biomeID = 15
+                if randint(1, 5) == 5:
+                    World[x][y].biomeID = 5
+
+            if World[x][y].temp > 0.2 and World[x][y].precip >= 0.66 and World[x][y].drainage > 0.33:
+                World[x][y].biomeID = 5
+                if World[x][y].precip >= 0.75:
+                    World[x][y].biomeID = 6
+                if randint(1, 5) == 5:
+                    World[x][y].biomeID = 15
+
+            if World[x][y].precip >= 0.10 and World[x][y].precip < 0.33 and World[x][y].drainage >= 0.5:
+                World[x][y].biomeID = 16
+                if randint(1, 2) == 2:
+                    World[x][y].biomeID = 14
+
+            if World[x][y].precip < 0.10:
+                World[x][y].biomeID = 4
+                if World[x][y].drainage > 0.5:
+                    World[x][y].biomeID = 16
+                    if randint(1, 2) == 2:
+                        World[x][y].biomeID = 14
+                if World[x][y].drainage >= 0.66:
+                    World[x][y].biomeID = 8
+
+            if World[x][y].height <= 0.2:
+                World[x][y].biomeID = 0
+
+            if World[x][y].temp <= 0.2 and World[x][y].height > 0.15:
+                World[x][y].biomeID = randint(11, 13)
+
+            if World[x][y].height > 0.6:
+                World[x][y].biomeID = 9
+            if World[x][y].height > 0.9:
+                World[x][y].biomeID = 10
+
+    display_data('- BiomeIDs Atributed -')
+
+    # River Gen
+
+    for x in range(1):
+        RiverGen(World)
+    display_data('- River Gen -')
+
+    # Free Heightmaps
+    libtcod.heightmap_delete(hm)
+    libtcod.heightmap_delete(temp)
+    libtcod.heightmap_delete(noisehm)
+
+    display_data(' * Biomes/Rivers Sorted *')
+
+    display_data("returning completed world.")
+    return World
+
+
+def ReadRaces():
+    RacesFile = 'Races.txt'
+
+    NLines = sum(1 for line in open('Races.txt'))
+
+    NRaces = NLines // 7
+
+    f = open(RacesFile)
+
+    Races = [0 for x in range(NRaces)]
+
+    for x in range(NRaces):  # Reads info between ']' and '\n'
+        Info = [0 for a in range(7)]
+        for y in range(7):
+            data = f.readline()
+            start = data.index("]") + 1
+            end = data.index("\n", start)
+            Info[y] = data[start:end]
+        PreferedBiomes = [int(s) for s in str.split(Info[1]) if s.isdigit()]  # Take numbers from string
+        Races[x] = Race(Info[0], PreferedBiomes, int(Info[2]), int(Info[3]), int(Info[4]), int(Info[5]), Info[6])
+
+    f.close()
+
+    display_data('- Races Read -')
+
+    return Races
+
+
+def ReadGovern():
+    GovernFile = 'CivilizedGovernment.txt'
+
+    NLines = sum(1 for line in open('CivilizedGovernment.txt'))
+
+    NGovern = NLines // 5
+
+    f = open(GovernFile)
+
+    Governs = [0 for x in range(NGovern)]
+
+    for x in range(NGovern):  # Reads info between ']' and '\n'
+        Info = [0 for a in range(5)]
+        for y in range(5):
+            data = f.readline()
+            start = data.index("]") + 1
+            end = data.index("\n", start)
+            Info[y] = data[start:end]
+        Governs[x] = GovernmentType(Info[0], Info[1], int(Info[2]), int(Info[3]), int(Info[4]))
+
+    f.close()
+
+    display_data('- Government Types Read -')
+
+    return Governs
+
+
+def CivGen(Races,
+           Govern):  # -------------------------------------------------------------------- * CIV GEN * ----------------------------------------------------------------------------------
+
+    Civs = []
+
+    for x in range(CIVILIZED_CIVS):
+
+        libtcod.namegen_parse('namegen/jice_fantasy.cfg')
+        Name = libtcod.namegen_generate('Fantasy male')
+        libtcod.namegen_destroy()
+
+        Name += " Civilization"
+
+        Race = Races[randint(0, len(Races) - 1)]
+        while Race.Form != "civilized":
+            Race = Races[randint(0, len(Races) - 1)]
+
+        Government = Govern[randint(0, len(Govern) - 1)]
+
+        Color = Palette[randint(0, len(Palette) - 1)]
+
+        Flag = FlagGenerator(Color)
+
+        # Initialize Civ
+        Civs.append(Civ(Race, Name, Government, Color, Flag, 0))
+
+    for a in range(TRIBAL_CIVS):
+
+        libtcod.namegen_parse('namegen/jice_fantasy.cfg')
+        Name = libtcod.namegen_generate('Fantasy male')
+        libtcod.namegen_destroy()
+
+        Name += " Tribe"
+
+        Race = Races[randint(0, len(Races) - 1)]
+        while Race.Form != "tribal":
+            Race = Races[randint(0, len(Races) - 1)]
+
+        Government = GovernmentType("Tribal", "*PLACE HOLDER*", 2, 50, 0)
+
+        Color = libtcod.Color(randint(0, 255), randint(0, 255), randint(0, 255))
+
+        Flag = FlagGenerator(Color)
+
+        # Initialize Civ
+        Civs.append(Civ(Race, Name, Government, Color, Flag, 0))
+
+    display_data('- Civs Generated -')
+
+    return Civs
+
+
+def SetupCivs(Civs, World, Chars, Colors):
+    for x in range(len(Civs)):
+
+        Civs[x].Sites = []
+        Civs[x].SuitableSites = []
+
+        del Civs[x].SuitableSites[:]
+
+        # Civs[x].PrintInfo()
+
+        for i in range(WORLD_WIDTH):
+            for j in range(WORLD_HEIGHT):
+                for g in range(len(Civs[x].Race.PrefBiome)):
+                    if World[i][j].biomeID == Civs[x].Race.PrefBiome[g]:
+                        Civs[x].SuitableSites.append(CivSite(i, j, "", 1, 0))
+
+        rand = randint(0, len(Civs[x].SuitableSites) - 1)
+        while World[Civs[x].SuitableSites[rand].x][Civs[x].SuitableSites[rand].y].isCiv == True:
+            del Civs[x].SuitableSites[rand]
+            rand = randint(0, len(Civs[x].SuitableSites) - 1)
+
+        X = Civs[x].SuitableSites[rand].x
+        Y = Civs[x].SuitableSites[rand].y
+
+        World[X][Y].isCiv = True
+
+        FinalProsperity = World[X][Y].prosperity * 150
+        if World[X][Y].hasRiver:
+            FinalProsperity = FinalProsperity * 1.5
+        PopCap = 4 * Civs[x].Race.ReproductionSpeed + FinalProsperity
+        PopCap = PopCap * 2  # Capital Bonus
+        PopCap = round(PopCap)
+
+        Civs[x].Sites.append(CivSite(X, Y, "Village", 0, PopCap))
+
+        Civs[x].Sites[0].isCapital = True
+
+        Civs[x].Sites[0].Population = 20
+
+        Chars[X][Y] = 31
+        Colors[X][Y] = Civs[x].Color
+
+        Civs[x].PrintInfo()
+
+    display_data('- Civs Setup -')
+
+    display_data(' * Civ Gen DONE *')
+
+    return Civs
+
+
+##################################################################################### - PROCESS CIVS - ##################################################################################
+
+def NewSite(Civ, Origin, World, Chars, Colors):
+    rand = randint(0, len(Civ.SuitableSites) - 1)
+
+    Tries = 0
+
+    while PointDistRound(Origin.x, Origin.y, Civ.SuitableSites[rand].x,
+                         Civ.SuitableSites[rand].y) > EXPANSION_DISTANCE or World[Civ.SuitableSites[rand].x][
+        Civ.SuitableSites[rand].y].isCiv:
+        if Tries > 200:
+            return Civ
+        Tries += 1
+        rand = randint(0, len(Civ.SuitableSites) - 1)
+
+    X = Civ.SuitableSites[rand].x
+    Y = Civ.SuitableSites[rand].y
+
+    World[X][Y].isCiv = True
+
+    FinalProsperity = World[X][Y].prosperity * 150
+    if World[X][Y].hasRiver:
+        FinalProsperity = FinalProsperity * 1.5
+    PopCap = 3 * Civ.Race.ReproductionSpeed + FinalProsperity
+    PopCap = round(PopCap)
+
+    Civ.Sites.append(CivSite(X, Y, "Village", 0, PopCap))
+
+    Civ.Sites[len(Civ.Sites) - 1].Population = 20
+
+    Chars[X][Y] = 31
+    Colors[X][Y] = Civ.Color
+
+    global needUpdate
+    needUpdate = True
+
+    return Civ
+
+
+def ProcessCivs(World, Civs, Chars, Colors, Month):
+    """
+    Process the civilizations in the world by updating their population, sites, and handling diplomacy. This
+    function is called once per month but will become far more advanced as I start developing for my own
+    project.
+    NOTE: Previously this function only used print statements to output info to a secondary Windows console.
+    I am going to add logging so that I can use "tail" to monitor the output in Linux as it was in Windows.
+    Later I can use some version of code from the "os" module to differentiate and use the right method to
+    show the update data from here. Eventually though it should have a GUI inside the game itself to display
+    the data.
+    May just create a new function to do this. Instead of print or log it would be reduced to a function call
+    like DisplayData(thedata) and that function would do the OS check and either log or print depending on the OS.
     
-    def set_fore(self, x, y, r, g, b, char):
-        # set the character and foreground color of one cell.
-        i = self.width * y + x
-        self.fore_r[i] = r
-        self.fore_g[i] = g
-        self.fore_b[i] = b
-        self.char[i] = ord(char)
-    
-    def set_back(self, x, y, r, g, b):
-        # set the background color of one cell.
-        i = self.width * y + x
-        self.back_r[i] = r
-        self.back_g[i] = g
-        self.back_b[i] = b
-    
-    def set(self, x, y, back_r, back_g, back_b, fore_r, fore_g, fore_b, char):
-        # set the background color, foreground color and character of one cell.
-        i = self.width * y + x
-        self.back_r[i] = back_r
-        self.back_g[i] = back_g
-        self.back_b[i] = back_b
-        self.fore_r[i] = fore_r
-        self.fore_g[i] = fore_g
-        self.fore_b[i] = fore_b
-        self.char[i] = ord(char)
-    
-    def blit(self, dest, fill_fore=True, fill_back=True):
-        # use libtcod's "fill" functions to write the buffer to a console.
-        if (console_get_width(dest) != self.width or
-            console_get_height(dest) != self.height):
-            raise ValueError('ConsoleBuffer.blit: Destination console has an incorrect size.')
-
-        s = struct.Struct('%di' % len(self.back_r))
-
-        if fill_back:
-            _lib.TCOD_console_fill_background(dest, (c_int * len(self.back_r))(*self.back_r), (c_int * len(self.back_g))(*self.back_g), (c_int * len(self.back_b))(*self.back_b))
-
-        if fill_fore:
-            _lib.TCOD_console_fill_foreground(dest, (c_int * len(self.fore_r))(*self.fore_r), (c_int * len(self.fore_g))(*self.fore_g), (c_int * len(self.fore_b))(*self.fore_b))
-            _lib.TCOD_console_fill_char(dest, (c_int * len(self.char))(*self.char))
-
-_lib.TCOD_console_credits_render.restype = c_bool
-_lib.TCOD_console_is_fullscreen.restype = c_bool
-_lib.TCOD_console_is_window_closed.restype = c_bool
-_lib.TCOD_console_get_default_background.restype = Color
-_lib.TCOD_console_get_default_foreground.restype = Color
-_lib.TCOD_console_get_char_background.restype = Color
-_lib.TCOD_console_get_char_foreground.restype = Color
-_lib.TCOD_console_get_fading_color.restype = Color
-_lib.TCOD_console_is_key_pressed.restype = c_bool
-
-# background rendering modes
-BKGND_NONE = 0
-BKGND_SET = 1
-BKGND_MULTIPLY = 2
-BKGND_LIGHTEN = 3
-BKGND_DARKEN = 4
-BKGND_SCREEN = 5
-BKGND_COLOR_DODGE = 6
-BKGND_COLOR_BURN = 7
-BKGND_ADD = 8
-BKGND_ADDA = 9
-BKGND_BURN = 10
-BKGND_OVERLAY = 11
-BKGND_ALPH = 12
-BKGND_DEFAULT=13
-
-def BKGND_ALPHA(a):
-    return BKGND_ALPH | (int(a * 255) << 8)
-
-def BKGND_ADDALPHA(a):
-    return BKGND_ADDA | (int(a * 255) << 8)
-
-# non blocking key events types
-KEY_PRESSED = 1
-KEY_RELEASED = 2
-# key codes
-KEY_NONE = 0
-KEY_ESCAPE = 1
-KEY_BACKSPACE = 2
-KEY_TAB = 3
-KEY_ENTER = 4
-KEY_SHIFT = 5
-KEY_CONTROL = 6
-KEY_ALT = 7
-KEY_PAUSE = 8
-KEY_CAPSLOCK = 9
-KEY_PAGEUP = 10
-KEY_PAGEDOWN = 11
-KEY_END = 12
-KEY_HOME = 13
-KEY_UP = 14
-KEY_LEFT = 15
-KEY_RIGHT = 16
-KEY_DOWN = 17
-KEY_PRINTSCREEN = 18
-KEY_INSERT = 19
-KEY_DELETE = 20
-KEY_LWIN = 21
-KEY_RWIN = 22
-KEY_APPS = 23
-KEY_0 = 24
-KEY_1 = 25
-KEY_2 = 26
-KEY_3 = 27
-KEY_4 = 28
-KEY_5 = 29
-KEY_6 = 30
-KEY_7 = 31
-KEY_8 = 32
-KEY_9 = 33
-KEY_KP0 = 34
-KEY_KP1 = 35
-KEY_KP2 = 36
-KEY_KP3 = 37
-KEY_KP4 = 38
-KEY_KP5 = 39
-KEY_KP6 = 40
-KEY_KP7 = 41
-KEY_KP8 = 42
-KEY_KP9 = 43
-KEY_KPADD = 44
-KEY_KPSUB = 45
-KEY_KPDIV = 46
-KEY_KPMUL = 47
-KEY_KPDEC = 48
-KEY_KPENTER = 49
-KEY_F1 = 50
-KEY_F2 = 51
-KEY_F3 = 52
-KEY_F4 = 53
-KEY_F5 = 54
-KEY_F6 = 55
-KEY_F7 = 56
-KEY_F8 = 57
-KEY_F9 = 58
-KEY_F10 = 59
-KEY_F11 = 60
-KEY_F12 = 61
-KEY_NUMLOCK = 62
-KEY_SCROLLLOCK = 63
-KEY_SPACE = 64
-KEY_CHAR = 65
-# special chars
-# single walls
-CHAR_HLINE = 196
-CHAR_VLINE = 179
-CHAR_NE = 191
-CHAR_NW = 218
-CHAR_SE = 217
-CHAR_SW = 192
-CHAR_TEEW = 180
-CHAR_TEEE = 195
-CHAR_TEEN = 193
-CHAR_TEES = 194
-CHAR_CROSS = 197
-# double walls
-CHAR_DHLINE = 205
-CHAR_DVLINE = 186
-CHAR_DNE = 187
-CHAR_DNW = 201
-CHAR_DSE = 188
-CHAR_DSW = 200
-CHAR_DTEEW = 185
-CHAR_DTEEE = 204
-CHAR_DTEEN = 202
-CHAR_DTEES = 203
-CHAR_DCROSS = 206
-# blocks
-CHAR_BLOCK1 = 176
-CHAR_BLOCK2 = 177
-CHAR_BLOCK3 = 178
-# arrows
-CHAR_ARROW_N = 24
-CHAR_ARROW_S = 25
-CHAR_ARROW_E = 26
-CHAR_ARROW_W = 27
-# arrows without tail
-CHAR_ARROW2_N = 30
-CHAR_ARROW2_S = 31
-CHAR_ARROW2_E = 16
-CHAR_ARROW2_W = 17
-# double arrows
-CHAR_DARROW_H = 29
-CHAR_DARROW_V = 18
-# GUI stuff
-CHAR_CHECKBOX_UNSET = 224
-CHAR_CHECKBOX_SET = 225
-CHAR_RADIO_UNSET = 9
-CHAR_RADIO_SET = 10
-# sub-pixel resolution kit
-CHAR_SUBP_NW = 226
-CHAR_SUBP_NE = 227
-CHAR_SUBP_N = 228
-CHAR_SUBP_SE = 229
-CHAR_SUBP_DIAG = 230
-CHAR_SUBP_E = 231
-CHAR_SUBP_SW = 232
-# misc characters
-CHAR_BULLET = 7
-CHAR_BULLET_INV = 8
-CHAR_BULLET_SQUARE = 254
-CHAR_CENT = 189
-CHAR_CLUB = 5
-CHAR_COPYRIGHT = 184
-CHAR_CURRENCY = 207
-CHAR_DIAMOND = 4
-CHAR_DIVISION = 246
-CHAR_EXCLAM_DOUBLE = 19
-CHAR_FEMALE = 12
-CHAR_FUNCTION = 159
-CHAR_GRADE = 248
-CHAR_HALF = 171
-CHAR_HEART = 3
-CHAR_LIGHT = 15
-CHAR_MALE = 11
-CHAR_MULTIPLICATION = 158
-CHAR_NOTE = 13
-CHAR_NOTE_DOUBLE = 14
-CHAR_ONE_QUARTER = 172
-CHAR_PILCROW = 20
-CHAR_POUND = 156
-CHAR_POW1 = 251
-CHAR_POW2 = 253
-CHAR_POW3 = 252
-CHAR_RESERVED = 169
-CHAR_SECTION = 21
-CHAR_SMILIE = 1
-CHAR_SMILIE_INV = 2
-CHAR_SPADE = 6
-CHAR_THREE_QUARTERS = 243
-CHAR_UMLAUT = 249
-CHAR_YEN = 190
-# font flags
-FONT_LAYOUT_ASCII_INCOL = 1
-FONT_LAYOUT_ASCII_INROW = 2
-FONT_TYPE_GREYSCALE = 4
-FONT_TYPE_GRAYSCALE = 4
-FONT_LAYOUT_TCOD = 8
-# color control codes
-COLCTRL_1=1
-COLCTRL_2=2
-COLCTRL_3=3
-COLCTRL_4=4
-COLCTRL_5=5
-COLCTRL_NUMBER=5
-COLCTRL_FORE_RGB=6
-COLCTRL_BACK_RGB=7
-COLCTRL_STOP=8
-# renderers
-RENDERER_GLSL=0
-RENDERER_OPENGL=1
-RENDERER_SDL=2
-NB_RENDERERS=3
-# alignment
-LEFT=0
-RIGHT=1
-CENTER=2
-# initializing the console
-def console_init_root(w, h, title, fullscreen=False, renderer=RENDERER_SDL):
-    _lib.TCOD_console_init_root(w, h, c_char_p(title), fullscreen, renderer)
-
-def console_get_width(con):
-    return _lib.TCOD_console_get_width(con)
-
-def console_get_height(con):
-    return _lib.TCOD_console_get_height(con)
-
-def console_set_custom_font(fontFile, flags=FONT_LAYOUT_ASCII_INCOL, nb_char_horiz=0, nb_char_vertic=0):
-    _lib.TCOD_console_set_custom_font(c_char_p(fontFile), flags, nb_char_horiz, nb_char_vertic)
-
-def console_map_ascii_code_to_font(asciiCode, fontCharX, fontCharY):
-    if type(asciiCode) == str or type(asciiCode) == bytes:
-        _lib.TCOD_console_map_ascii_code_to_font(ord(asciiCode), fontCharX,
-                                                 fontCharY)
-    else:
-        _lib.TCOD_console_map_ascii_code_to_font(asciiCode, fontCharX,
-                                                 fontCharY)
-
-def console_map_ascii_codes_to_font(firstAsciiCode, nbCodes, fontCharX,
-                                    fontCharY):
-    if type(firstAsciiCode) == str or type(firstAsciiCode) == bytes:
-        _lib.TCOD_console_map_ascii_codes_to_font(ord(firstAsciiCode), nbCodes,
-                                                  fontCharX, fontCharY)
-    else:
-        _lib.TCOD_console_map_ascii_codes_to_font(firstAsciiCode, nbCodes,
-                                                  fontCharX, fontCharY)
-
-def console_map_string_to_font(s, fontCharX, fontCharY):
-    if type(s) == bytes:
-        _lib.TCOD_console_map_string_to_font(s, fontCharX, fontCharY)
-    else:
-        _lib.TCOD_console_map_string_to_font_utf(s, fontCharX, fontCharY)
-
-def console_is_fullscreen():
-    return _lib.TCOD_console_is_fullscreen()
-
-def console_set_fullscreen(fullscreen):
-    _lib.TCOD_console_set_fullscreen(c_int(fullscreen))
-
-def console_is_window_closed():
-    return _lib.TCOD_console_is_window_closed()
-
-def console_set_window_title(title):
-    _lib.TCOD_console_set_window_title(c_char_p(title))
-
-def console_credits():
-    _lib.TCOD_console_credits()
-
-def console_credits_reset():
-    _lib.TCOD_console_credits_reset()
-
-def console_credits_render(x, y, alpha):
-    return _lib.TCOD_console_credits_render(x, y, c_int(alpha))
-
-def console_flush():
-    _lib.TCOD_console_flush()
-
-# drawing on a console
-def console_set_default_background(con, col):
-    _lib.TCOD_console_set_default_background(con, col)
-
-def console_set_default_foreground(con, col):
-    _lib.TCOD_console_set_default_foreground(con, col)
-
-def console_clear(con):
-    return _lib.TCOD_console_clear(con)
-
-def console_put_char(con, x, y, c, flag=BKGND_DEFAULT):
-    if type(c) == str or type(c) == bytes:
-        _lib.TCOD_console_put_char(con, x, y, ord(c), flag)
-    else:
-        _lib.TCOD_console_put_char(con, x, y, c, flag)
-
-def console_put_char_ex(con, x, y, c, fore, back):
-    if type(c) == str or type(c) == bytes:
-        _lib.TCOD_console_put_char_ex(con, x, y, ord(c), fore, back)
-    else:
-        _lib.TCOD_console_put_char_ex(con, x, y, c, fore, back)
-
-def console_set_char_background(con, x, y, col, flag=BKGND_SET):
-    _lib.TCOD_console_set_char_background(con, x, y, col, flag)
-
-def console_set_char_foreground(con, x, y, col):
-    _lib.TCOD_console_set_char_foreground(con, x, y, col)
-
-def console_set_char(con, x, y, c):
-    if type(c) == str or type(c) == bytes:
-        _lib.TCOD_console_set_char(con, x, y, ord(c))
-    else:
-        _lib.TCOD_console_set_char(con, x, y, c)
-
-def console_set_background_flag(con, flag):
-    _lib.TCOD_console_set_background_flag(con, c_int(flag))
-
-def console_get_background_flag(con):
-    return _lib.TCOD_console_get_background_flag(con)
-
-def console_set_alignment(con, alignment):
-    _lib.TCOD_console_set_alignment(con, c_int(alignment))
-
-def console_get_alignment(con):
-    return _lib.TCOD_console_get_alignment(con)
-
-def console_print(con, x, y, fmt):
-    if type(fmt) == bytes:
-        _lib.TCOD_console_print(c_void_p(con), x, y, c_char_p(fmt))
-    else:
-        _lib.TCOD_console_print_utf(c_void_p(con), x, y, fmt)
-
-def console_print_ex(con, x, y, flag, alignment, fmt):
-    if type(fmt) == bytes:
-        _lib.TCOD_console_print_ex(c_void_p(con), x, y, flag, alignment, c_char_p(fmt))
-    else:
-        _lib.TCOD_console_print_ex_utf(c_void_p(con), x, y, flag, alignment, fmt)
-
-def console_print_rect(con, x, y, w, h, fmt):
-    if type(fmt) == bytes:
-        return _lib.TCOD_console_print_rect(c_void_p(con), x, y, w, h, c_char_p(fmt))
-    else:
-        return _lib.TCOD_console_print_rect_utf(c_void_p(con), x, y, w, h, fmt)
-
-def console_print_rect_ex(con, x, y, w, h, flag, alignment, fmt):
-    if type(fmt) == bytes:
-        return _lib.TCOD_console_print_rect_ex(c_void_p(con), x, y, w, h, flag, alignment, c_char_p(fmt))
-    else:
-        return _lib.TCOD_console_print_rect_ex_utf(c_void_p(con), x, y, w, h, flag, alignment, fmt)
-
-def console_get_height_rect(con, x, y, w, h, fmt):
-    if type(fmt) == bytes:
-        return _lib.TCOD_console_get_height_rect(c_void_p(con), x, y, w, h, c_char_p(fmt))
-    else:
-        return _lib.TCOD_console_get_height_rect_utf(c_void_p(con), x, y, w, h, fmt)
-
-def console_rect(con, x, y, w, h, clr, flag=BKGND_DEFAULT):
-    _lib.TCOD_console_rect(con, x, y, w, h, c_int(clr), flag)
-
-def console_hline(con, x, y, l, flag=BKGND_DEFAULT):
-    _lib.TCOD_console_hline( con, x, y, l, flag)
-
-def console_vline(con, x, y, l, flag=BKGND_DEFAULT):
-    _lib.TCOD_console_vline( con, x, y, l, flag)
-
-def console_print_frame(con, x, y, w, h, clear=True, flag=BKGND_DEFAULT, fmt=0):
-    _lib.TCOD_console_print_frame(c_void_p(con), x, y, w, h, c_int(clear), flag, c_char_p(fmt))
-
-def console_set_color_control(con,fore,back) :
-    _lib.TCOD_console_set_color_control(con,fore,back)
-
-def console_get_default_background(con):
-    return _lib.TCOD_console_get_default_background(con)
-
-def console_get_default_foreground(con):
-    return _lib.TCOD_console_get_default_foreground(con)
-
-def console_get_char_background(con, x, y):
-    return _lib.TCOD_console_get_char_background(con, x, y)
-
-def console_get_char_foreground(con, x, y):
-    return _lib.TCOD_console_get_char_foreground(con, x, y)
-
-def console_get_char(con, x, y):
-    return _lib.TCOD_console_get_char(con, x, y)
-
-def console_set_fade(fade, fadingColor):
-    _lib.TCOD_console_set_fade(fade, fadingColor)
-    ##_lib.TCOD_console_set_fade_wrapper(fade, fadingColor)
-
-def console_get_fade():
-    return _lib.TCOD_console_get_fade().value
-
-def console_get_fading_color():
-    return _lib.TCOD_console_get_fading_color()
-
-# handling keyboard input
-def console_wait_for_keypress(flush):
-    k=Key()
-    _lib.TCOD_console_wait_for_keypress_wrapper(byref(k),c_bool(flush))
-    return k
-
-def console_check_for_keypress(flags=KEY_RELEASED):
-    k=Key()
-    _lib.TCOD_console_check_for_keypress_wrapper(byref(k),c_int(flags))
-    return k
-
-def console_is_key_pressed(key):
-    return _lib.TCOD_console_is_key_pressed(key)
-
-def console_set_keyboard_repeat(initial_delay, interval):
-    _lib.TCOD_console_set_keyboard_repeat(initial_delay, interval)
-
-def console_disable_keyboard_repeat():
-    _lib.TCOD_console_disable_keyboard_repeat()
-
-# using offscreen consoles
-def console_new(w, h):
-    return _lib.TCOD_console_new(w, h)
-def console_from_file(filename):
-    return _lib.TCOD_console_from_file(filename)
-def console_get_width(con):
-    return _lib.TCOD_console_get_width(con)
-
-def console_get_height(con):
-    return _lib.TCOD_console_get_height(con)
-
-def console_blit(src, x, y, w, h, dst, xdst, ydst, ffade=1.0,bfade=1.0):
-    _lib.TCOD_console_blit(src, x, y, w, h, dst, xdst, ydst, c_float(ffade), c_float(bfade))
-
-def console_set_key_color(con, col):
-    _lib.TCOD_console_set_key_color(con, col)
-
-def console_delete(con):
-    _lib.TCOD_console_delete(con)
-
-# fast color filling
-def console_fill_foreground(con,r,g,b) :
-    if len(r) != len(g) or len(r) != len(b):
-        raise TypeError('R, G and B must all have the same size.')
-
-    if (numpy_available and isinstance(r, numpy.ndarray) and
-        isinstance(g, numpy.ndarray) and isinstance(b, numpy.ndarray)):
-        #numpy arrays, use numpy's ctypes functions
-        r = numpy.ascontiguousarray(r, dtype=numpy.int_)
-        g = numpy.ascontiguousarray(g, dtype=numpy.int_)
-        b = numpy.ascontiguousarray(b, dtype=numpy.int_)
-        cr = r.ctypes.data_as(POINTER(c_int))
-        cg = g.ctypes.data_as(POINTER(c_int))
-        cb = b.ctypes.data_as(POINTER(c_int))
-    else:
-        # otherwise convert using ctypes arrays
-        cr = (c_int * len(r))(*r)
-        cg = (c_int * len(g))(*g)
-        cb = (c_int * len(b))(*b)
-
-    _lib.TCOD_console_fill_foreground(con, cr, cg, cb)
-
-def console_fill_background(con,r,g,b) :
-    if len(r) != len(g) or len(r) != len(b):
-        raise TypeError('R, G and B must all have the same size.')
-
-    if (numpy_available and isinstance(r, numpy.ndarray) and
-        isinstance(g, numpy.ndarray) and isinstance(b, numpy.ndarray)):
-        #numpy arrays, use numpy's ctypes functions
-        r = numpy.ascontiguousarray(r, dtype=numpy.int_)
-        g = numpy.ascontiguousarray(g, dtype=numpy.int_)
-        b = numpy.ascontiguousarray(b, dtype=numpy.int_)
-        cr = r.ctypes.data_as(POINTER(c_int))
-        cg = g.ctypes.data_as(POINTER(c_int))
-        cb = b.ctypes.data_as(POINTER(c_int))
-    else:
-        # otherwise convert using ctypes arrays
-        cr = (c_int * len(r))(*r)
-        cg = (c_int * len(g))(*g)
-        cb = (c_int * len(b))(*b)
-
-    _lib.TCOD_console_fill_background(con, cr, cg, cb)
-
-def console_fill_char(con,arr) :
-    if (numpy_available and isinstance(arr, numpy.ndarray) ):
-        #numpy arrays, use numpy's ctypes functions
-        arr = numpy.ascontiguousarray(arr, dtype=numpy.int_)
-        carr = arr.ctypes.data_as(POINTER(c_int))
-    else:
-        #otherwise convert using the struct module
-        carr = struct.pack('%di' % len(arr), *arr)
-
-    _lib.TCOD_console_fill_char(con, carr)
+    Parameters:
+    - World: The world map where the civilizations exist.
+    - Civs: List of civilizations to process.
+    - Chars: Character representation of the world.
+    - Colors: Color representation of the world.
+    - Month: The current month in the simulation.
+    Returns:
+    None
+    """
+    display_data("------------------------------------------")
+
+    for x in range(CIVILIZED_CIVS + TRIBAL_CIVS):
+
+        display_data(Civs[x].Name)
+        display_data(Civs[x].Race.Name)
+
+        Civs[x].TotalPopulation = 0
+
+        # Site
+        for y in range(len(Civs[x].Sites)):
+
+            # Population
+            NewPop = int(round(Civs[x].Sites[y].Population * Civs[x].Race.ReproductionSpeed / 1500))
+
+            if Civs[x].Sites[y].Population > Civs[x].Sites[y].popcap / 2:
+                NewPop /= 6
+
+            Civs[x].Sites[y].Population += NewPop
+
+            # Expand
+            if Civs[x].Sites[y].Population > Civs[x].Sites[y].popcap:
+                Civs[x].Sites[y].Population = int(round(Civs[x].Sites[y].popcap))
+                if len(Civs[x].Sites) < CIV_MAX_SITES:
+                    Civs[x].Sites[y].Population = int(round(Civs[x].Sites[y].popcap / 2))
+                    Civs[x] = NewSite(Civs[x], Civs[x].Sites[y], World, Chars, Colors)
+
+            Civs[x].TotalPopulation += Civs[x].Sites[y].Population
+
+            # Diplomacy
+            for a in range(CIVILIZED_CIVS + TRIBAL_CIVS):
+                for b in range(len(Civs[a].Sites)):
+                    if x == a:
+                        break
+                    if PointDistRound(Civs[x].Sites[y].x, Civs[x].Sites[y].y, Civs[a].Sites[b].x,
+                                      Civs[a].Sites[b].y) < WAR_DISTANCE:
+                        AlreadyWar = False
+                        for c in range(len(Wars)):
+                            if (Wars[c].Side1 == Civs[x] and Wars[c].Side2 == Civs[a]) or (
+                                    Wars[c].Side1 == Civs[a] and Wars[c].Side2 == Civs[x]):
+                                # Already at War
+                                AlreadyWar = True
+                        if AlreadyWar == False:
+                            # Start War and form armies if dot have army yet
+                            Wars.append(War(Civs[x], Civs[a]))
+                            if Civs[a].atWar == False:  # if not already at war form new army
+                                Civs[a].Army = Army(Civs[a].Sites[0].x,
+                                                    Civs[a].Sites[0].y,
+                                                    Civs[a],
+                                                    Civs[a].TotalPopulation * Civs[a].Government.Militarization / 100)
+                                Civs[a].atWar = True
+                            if Civs[x].atWar == False:  # if not already at war form new army
+                                Civs[x].Army = Army(Civs[x].Sites[0].x,
+                                                    Civs[x].Sites[0].y,
+                                                    Civs[x],
+                                                    Civs[x].TotalPopulation * Civs[x].Government.Militarization / 100)
+                                Civs[x].atWar = True
+
+            display_data(f"X: {Civs[x].Sites[y].x}, Y: {Civs[x].Sites[y].y}, Population: {Civs[x].Sites[y].Population}")
+
+        display_data(f"Army Position: ({Civs[x].Army.x}, {Civs[x].Army.y}) Size: {Civs[x].Army.Size}\n")
         
-def console_load_asc(con, filename) :
-    _lib.TCOD_console_load_asc(con,filename)
-def console_save_asc(con, filename) :
-    _lib.TCOD_console_save_asc(con,filename)
-def console_load_apf(con, filename) :
-    _lib.TCOD_console_load_apf(con,filename)
-def console_save_apf(con, filename) :
-    _lib.TCOD_console_save_apf(con,filename)
-
-############################
-# sys module
-############################
-_lib.TCOD_sys_get_last_frame_length.restype = c_float
-_lib.TCOD_sys_elapsed_seconds.restype = c_float
-
-# high precision time functions
-def sys_set_fps(fps):
-    _lib.TCOD_sys_set_fps(fps)
-
-def sys_get_fps():
-    return _lib.TCOD_sys_get_fps()
-
-def sys_get_last_frame_length():
-    return _lib.TCOD_sys_get_last_frame_length()
-
-def sys_sleep_milli(val):
-    _lib.TCOD_sys_sleep_milli(c_uint(val))
-
-def sys_elapsed_milli():
-    return _lib.TCOD_sys_elapsed_milli()
-
-def sys_elapsed_seconds():
-    return _lib.TCOD_sys_elapsed_seconds()
-
-def sys_set_renderer(renderer):
-    _lib.TCOD_sys_set_renderer(renderer)
-
-def sys_get_renderer():
-    return _lib.TCOD_sys_get_renderer()
-
-# easy screenshots
-def sys_save_screenshot(name=0):
-    _lib.TCOD_sys_save_screenshot(c_char_p(name))
-
-# custom fullscreen resolution
-def sys_force_fullscreen_resolution(width, height):
-    _lib.TCOD_sys_force_fullscreen_resolution(width, height)
-
-def sys_get_current_resolution():
-    w = c_int()
-    h = c_int()
-    _lib.TCOD_sys_get_current_resolution(byref(w), byref(h))
-    return w.value, h.value
-
-def sys_get_char_size():
-    w = c_int()
-    h = c_int()
-    _lib.TCOD_sys_get_char_size(byref(w), byref(h))
-    return w.value, h.value
-
-# update font bitmap
-def sys_update_char(asciiCode, fontx, fonty, img, x, y) :
-    _lib.TCOD_sys_update_char(c_int(asciiCode),c_int(fontx),c_int(fonty),img,c_int(x),c_int(y))
-
-# custom SDL post renderer
-SDL_RENDERER_FUNC = CFUNCTYPE(None, c_void_p)
-def sys_register_SDL_renderer(callback):
-    global sdl_renderer_func
-    sdl_renderer_func = SDL_RENDERER_FUNC(callback)
-    _lib.TCOD_sys_register_SDL_renderer(sdl_renderer_func)
-
-# events
-EVENT_KEY_PRESS=1
-EVENT_KEY_RELEASE=2
-EVENT_KEY=EVENT_KEY_PRESS|EVENT_KEY_RELEASE
-EVENT_MOUSE_MOVE=4
-EVENT_MOUSE_PRESS=8
-EVENT_MOUSE_RELEASE=16
-EVENT_MOUSE=EVENT_MOUSE_MOVE|EVENT_MOUSE_PRESS|EVENT_MOUSE_RELEASE
-EVENT_ANY=EVENT_KEY|EVENT_MOUSE
-def sys_check_for_event(mask,k,m) :
-    return _lib.TCOD_sys_check_for_event(c_int(mask),byref(k),byref(m))
-
-def sys_wait_for_event(mask,k,m,flush) :
-    return _lib.TCOD_sys_wait_for_event(c_int(mask),byref(k),byref(m),c_bool(flush))
-
-############################
-# line module
-############################
-_lib.TCOD_line_step.restype = c_bool
-_lib.TCOD_line.restype=c_bool
-_lib.TCOD_line_step_mt.restype = c_bool
-
-def line_init(xo, yo, xd, yd):
-    _lib.TCOD_line_init(xo, yo, xd, yd)
-
-def line_step():
-    x = c_int()
-    y = c_int()
-    ret = _lib.TCOD_line_step(byref(x), byref(y))
-    if not ret:
-        return x.value, y.value
-    return None,None
-
-def line(xo,yo,xd,yd,py_callback) :
-    LINE_CBK_FUNC=CFUNCTYPE(c_bool,c_int,c_int)
-    c_callback=LINE_CBK_FUNC(py_callback)
-    return _lib.TCOD_line(xo,yo,xd,yd,c_callback)
-
-def line_iter(xo, yo, xd, yd):
-    data = (c_int * 9)()        # struct TCOD_bresenham_data_t
-    _lib.TCOD_line_init_mt(xo, yo, xd, yd, data)
-    x = c_int(xo)
-    y = c_int(yo)
-    done = False
-    while not done:
-        yield x.value, y.value
-        done = _lib.TCOD_line_step_mt(byref(x), byref(y), data)
-
-############################
-# image module
-############################
-_lib.TCOD_image_is_pixel_transparent.restype = c_bool
-_lib.TCOD_image_get_pixel.restype = Color
-_lib.TCOD_image_get_mipmap_pixel.restype = Color
-
-def image_new(width, height):
-    return _lib.TCOD_image_new(width, height)
-
-def image_clear(image,col) :
-    _lib.TCOD_image_clear(image,col)
-
-def image_invert(image) :
-    _lib.TCOD_image_invert(image)
-
-def image_hflip(image) :
-    _lib.TCOD_image_hflip(image)
-
-def image_rotate90(image, num=1) :
-    _lib.TCOD_image_rotate90(image,num)
-
-def image_vflip(image) :
-    _lib.TCOD_image_vflip(image)
-
-def image_scale(image, neww, newh) :
-    _lib.TCOD_image_scale(image,c_int(neww),c_int(newh))
-
-def image_set_key_color(image,col) :
-    _lib.TCOD_image_set_key_color(image,col)
-
-def image_get_alpha(image,x,y) :
-    return _lib.TCOD_image_get_alpha(image,c_int(x),c_int(y))
-
-def image_is_pixel_transparent(image,x,y) :
-    return _lib.TCOD_image_is_pixel_transparent(image,c_int(x),c_int(y))
-
-def image_load(filename):
-    return _lib.TCOD_image_load(c_char_p(filename))
-
-def image_from_console(console):
-    return _lib.TCOD_image_from_console(console)
-
-def image_refresh_console(image, console):
-    _lib.TCOD_image_refresh_console(image, console)
-
-def image_get_size(image):
-    w=c_int()
-    h=c_int()
-    _lib.TCOD_image_get_size(image, byref(w), byref(h))
-    return w.value, h.value
-
-def image_get_pixel(image, x, y):
-    return _lib.TCOD_image_get_pixel(image, x, y)
-
-def image_get_mipmap_pixel(image, x0, y0, x1, y1):
-    return _lib.TCOD_image_get_mipmap_pixel(image, c_float(x0), c_float(y0),
-                                            c_float(x1), c_float(y1))
-def image_put_pixel(image, x, y, col):
-    _lib.TCOD_image_put_pixel(image, x, y, col)
-    ##_lib.TCOD_image_put_pixel_wrapper(image, x, y, col)
-
-def image_blit(image, console, x, y, bkgnd_flag, scalex, scaley, angle):
-    _lib.TCOD_image_blit(image, console, c_float(x), c_float(y), bkgnd_flag,
-                         c_float(scalex), c_float(scaley), c_float(angle))
-
-def image_blit_rect(image, console, x, y, w, h, bkgnd_flag):
-    _lib.TCOD_image_blit_rect(image, console, x, y, w, h, bkgnd_flag)
-
-def image_blit_2x(image, console, dx, dy, sx=0, sy=0, w=-1, h=-1):
-    _lib.TCOD_image_blit_2x(image, console, dx,dy,sx,sy,w,h)
-
-def image_save(image, filename):
-    _lib.TCOD_image_save(image, c_char_p(filename))
-
-def image_delete(image):
-    _lib.TCOD_image_delete(image)
-
-############################
-# mouse module
-############################
-class Mouse(Structure):
-    _fields_=[('x', c_int),
-              ('y', c_int),
-              ('dx', c_int),
-              ('dy', c_int),
-              ('cx', c_int),
-              ('cy', c_int),
-              ('dcx', c_int),
-              ('dcy', c_int),
-              ('lbutton', c_bool),
-              ('rbutton', c_bool),
-              ('mbutton', c_bool),
-              ('lbutton_pressed', c_bool),
-              ('rbutton_pressed', c_bool),
-              ('mbutton_pressed', c_bool),
-              ('wheel_up', c_bool),
-              ('wheel_down', c_bool),
-              ]
-
-_lib.TCOD_mouse_is_cursor_visible.restype = c_bool
-
-def mouse_show_cursor(visible):
-    _lib.TCOD_mouse_show_cursor(c_int(visible))
-
-def mouse_is_cursor_visible():
-    return _lib.TCOD_mouse_is_cursor_visible()
-
-def mouse_move(x, y):
-    _lib.TCOD_mouse_move(x, y)
-
-def mouse_get_status():
-    mouse=Mouse()
-    _lib.TCOD_mouse_get_status_wrapper(byref(mouse))
-    return mouse
-
-############################
-# parser module
-############################
-_lib.TCOD_struct_get_name.restype = c_char_p
-_lib.TCOD_struct_is_mandatory.restype = c_bool
-_lib.TCOD_parser_get_bool_property.restype = c_bool
-_lib.TCOD_parser_get_float_property.restype = c_float
-_lib.TCOD_parser_get_string_property.restype = c_char_p
-_lib.TCOD_parser_get_color_property.restype = Color
-
-class Dice(Structure):
-    _fields_=[('nb_dices', c_int),
-              ('nb_faces', c_int),
-              ('multiplier', c_float),
-              ('addsub', c_float),
-              ]
-
-    def __repr__(self):
-        return "Dice(%d, %d, %s, %s)" % (self.nb_dices, self.nb_faces,
-                                      self.multiplier, self.addsub)
-
-class _CValue(Union):
-    _fields_=[('c',c_uint8),
-              ('i',c_int),
-              ('f',c_float),
-              ('s',c_char_p),
-              # JBR03192012 See http://bugs.python.org/issue14354 for why these are not defined as their actual types
-              ('col',c_uint8 * 3),
-              ('dice',c_int * 4),
-              ('custom',c_void_p),
-              ]
-
-_CFUNC_NEW_STRUCT = CFUNCTYPE(c_uint, c_void_p, c_char_p)
-_CFUNC_NEW_FLAG = CFUNCTYPE(c_uint, c_char_p)
-_CFUNC_NEW_PROPERTY = CFUNCTYPE(c_uint, c_char_p, c_int, _CValue)
-
-class _CParserListener(Structure):
-    _fields_=[('new_struct', _CFUNC_NEW_STRUCT),
-              ('new_flag',_CFUNC_NEW_FLAG),
-              ('new_property',_CFUNC_NEW_PROPERTY),
-              ('end_struct',_CFUNC_NEW_STRUCT),
-              ('error',_CFUNC_NEW_FLAG),
-              ]
-
-# property types
-TYPE_NONE = 0
-TYPE_BOOL = 1
-TYPE_CHAR = 2
-TYPE_INT = 3
-TYPE_FLOAT = 4
-TYPE_STRING = 5
-TYPE_COLOR = 6
-TYPE_DICE = 7
-TYPE_VALUELIST00 = 8
-TYPE_VALUELIST01 = 9
-TYPE_VALUELIST02 = 10
-TYPE_VALUELIST03 = 11
-TYPE_VALUELIST04 = 12
-TYPE_VALUELIST05 = 13
-TYPE_VALUELIST06 = 14
-TYPE_VALUELIST07 = 15
-TYPE_VALUELIST08 = 16
-TYPE_VALUELIST09 = 17
-TYPE_VALUELIST10 = 18
-TYPE_VALUELIST11 = 19
-TYPE_VALUELIST12 = 20
-TYPE_VALUELIST13 = 21
-TYPE_VALUELIST14 = 22
-TYPE_VALUELIST15 = 23
-TYPE_LIST = 1024
-
-def _convert_TCODList(clist, typ):
-    res = list()
-    for i in range(_lib.TCOD_list_size(clist)):
-        elt = _lib.TCOD_list_get(clist, i)
-        elt = cast(elt, c_void_p)
-        if typ == TYPE_BOOL:
-            elt = c_bool.from_buffer(elt).value
-        elif typ == TYPE_CHAR:
-            elt = c_char.from_buffer(elt).value
-        elif typ == TYPE_INT:
-            elt = c_int.from_buffer(elt).value
-        elif typ == TYPE_FLOAT:
-            elt = c_float.from_buffer(elt).value
-        elif typ == TYPE_STRING or TYPE_VALUELIST15 >= typ >= TYPE_VALUELIST00:
-            elt = cast(elt, c_char_p).value
-        elif typ == TYPE_COLOR:
-            elt = Color.from_buffer_copy(elt)
-        elif typ == TYPE_DICE:
-            # doesn't work
-            elt = Dice.from_buffer_copy(elt)
-        res.append(elt)
-    return res
-
-def parser_new():
-    return _lib.TCOD_parser_new()
-
-def parser_new_struct(parser, name):
-    return _lib.TCOD_parser_new_struct(parser, name)
-
-def struct_add_flag(struct, name):
-    _lib.TCOD_struct_add_flag(struct, name)
-
-def struct_add_property(struct, name, typ, mandatory):
-    _lib.TCOD_struct_add_property(struct, name, typ, c_bool(mandatory))
-
-def struct_add_value_list(struct, name, value_list, mandatory):
-    CARRAY = c_char_p * (len(value_list) + 1)
-    cvalue_list = CARRAY()
-    for i in range(len(value_list)):
-        cvalue_list[i] = cast(value_list[i], c_char_p)
-    cvalue_list[len(value_list)] = 0
-    _lib.TCOD_struct_add_value_list(struct, name, cvalue_list, c_bool(mandatory))
-
-def struct_add_list_property(struct, name, typ, mandatory):
-    _lib.TCOD_struct_add_list_property(struct, name, typ, c_bool(mandatory))
-
-def struct_add_structure(struct, sub_struct):
-    _lib.TCOD_struct_add_structure(struct, sub_struct)
-
-def struct_get_name(struct):
-    return _lib.TCOD_struct_get_name(struct)
-
-def struct_is_mandatory(struct, name):
-    return _lib.TCOD_struct_is_mandatory(struct, name)
-
-def struct_get_type(struct, name):
-    return _lib.TCOD_struct_get_type(struct, name)
-
-def parser_run(parser, filename, listener=0):
-    if listener != 0:
-        clistener=_CParserListener()
-        def value_converter(name, typ, value):
-            if typ == TYPE_BOOL:
-                return listener.new_property(name, typ, value.c == 1)
-            elif typ == TYPE_CHAR:
-                return listener.new_property(name, typ, '%c' % (value.c & 0xFF))
-            elif typ == TYPE_INT:
-                return listener.new_property(name, typ, value.i)
-            elif typ == TYPE_FLOAT:
-                return listener.new_property(name, typ, value.f)
-            elif typ == TYPE_STRING or \
-                 TYPE_VALUELIST15 >= typ >= TYPE_VALUELIST00:
-                 return listener.new_property(name, typ, value.s)
-            elif typ == TYPE_COLOR:
-                col = cast(value.col, POINTER(Color)).contents
-                return listener.new_property(name, typ, col)
-            elif typ == TYPE_DICE:
-                dice = cast(value.dice, POINTER(Dice)).contents
-                return listener.new_property(name, typ, dice)
-            elif typ & TYPE_LIST:
-                return listener.new_property(name, typ,
-                                        _convert_TCODList(value.custom, typ & 0xFF))
-            return True
-        clistener.new_struct = _CFUNC_NEW_STRUCT(listener.new_struct)
-        clistener.new_flag = _CFUNC_NEW_FLAG(listener.new_flag)
-        clistener.new_property = _CFUNC_NEW_PROPERTY(value_converter)
-        clistener.end_struct = _CFUNC_NEW_STRUCT(listener.end_struct)
-        clistener.error = _CFUNC_NEW_FLAG(listener.error)
-        _lib.TCOD_parser_run(parser, c_char_p(filename), byref(clistener))
-    else:
-        _lib.TCOD_parser_run(parser, c_char_p(filename), 0)
-
-def parser_delete(parser):
-    _lib.TCOD_parser_delete(parser)
-
-def parser_get_bool_property(parser, name):
-    return _lib.TCOD_parser_get_bool_property(parser, c_char_p(name))
-
-def parser_get_int_property(parser, name):
-    return _lib.TCOD_parser_get_int_property(parser, c_char_p(name))
-
-def parser_get_char_property(parser, name):
-    return '%c' % _lib.TCOD_parser_get_char_property(parser, c_char_p(name))
-
-def parser_get_float_property(parser, name):
-    return _lib.TCOD_parser_get_float_property(parser, c_char_p(name))
-
-def parser_get_string_property(parser, name):
-    return _lib.TCOD_parser_get_string_property(parser, c_char_p(name))
-
-def parser_get_color_property(parser, name):
-    return _lib.TCOD_parser_get_color_property(parser, c_char_p(name))
-
-def parser_get_dice_property(parser, name):
-    d = Dice()
-    _lib.TCOD_parser_get_dice_property_py(c_void_p(parser), c_char_p(name), byref(d))
-    return d
-
-def parser_get_list_property(parser, name, typ):
-    clist = _lib.TCOD_parser_get_list_property(parser, c_char_p(name), c_int(typ))
-    return _convert_TCODList(clist, typ)
-
-############################
-# random module
-############################
-_lib.TCOD_random_get_float.restype = c_float
-_lib.TCOD_random_get_double.restype = c_double
-
-RNG_MT = 0
-RNG_CMWC = 1
-
-DISTRIBUTION_LINEAR = 0
-DISTRIBUTION_GAUSSIAN = 1
-DISTRIBUTION_GAUSSIAN_RANGE = 2
-DISTRIBUTION_GAUSSIAN_INVERSE = 3
-DISTRIBUTION_GAUSSIAN_RANGE_INVERSE = 4
-
-def random_get_instance():
-    return _lib.TCOD_random_get_instance()
-
-def random_new(algo=RNG_CMWC):
-    return _lib.TCOD_random_new(algo)
-
-def random_new_from_seed(seed, algo=RNG_CMWC):
-    return _lib.TCOD_random_new_from_seed(algo,c_uint(seed))
-
-def random_set_distribution(rnd, dist) :
-	_lib.TCOD_random_set_distribution(rnd, dist)
-
-def random_get_int(rnd, mi, ma):
-    return _lib.TCOD_random_get_int(rnd, mi, ma)
-
-def random_get_float(rnd, mi, ma):
-    return _lib.TCOD_random_get_float(rnd, c_float(mi), c_float(ma))
-
-def random_get_double(rnd, mi, ma):
-    return _lib.TCOD_random_get_double(rnd, c_double(mi), c_double(ma))
-
-def random_get_int_mean(rnd, mi, ma, mean):
-    return _lib.TCOD_random_get_int_mean(rnd, mi, ma, mean)
-
-def random_get_float_mean(rnd, mi, ma, mean):
-    return _lib.TCOD_random_get_float_mean(rnd, c_float(mi), c_float(ma), c_float(mean))
-
-def random_get_double_mean(rnd, mi, ma, mean):
-    return _lib.TCOD_random_get_double_mean(rnd, c_double(mi), c_double(ma), c_double(mean))
-
-def random_save(rnd):
-    return _lib.TCOD_random_save(rnd)
-
-def random_restore(rnd, backup):
-    _lib.TCOD_random_restore(rnd, backup)
-
-def random_delete(rnd):
-    _lib.TCOD_random_delete(rnd)
-
-############################
-# noise module
-############################
-_lib.TCOD_noise_get.restype = c_float
-_lib.TCOD_noise_get_ex.restype = c_float
-_lib.TCOD_noise_get_fbm.restype = c_float
-_lib.TCOD_noise_get_fbm_ex.restype = c_float
-_lib.TCOD_noise_get_turbulence.restype = c_float
-_lib.TCOD_noise_get_turbulence_ex.restype = c_float
-
-NOISE_DEFAULT_HURST = 0.5
-NOISE_DEFAULT_LACUNARITY = 2.0
-
-NOISE_DEFAULT = 0
-NOISE_PERLIN = 1
-NOISE_SIMPLEX = 2
-NOISE_WAVELET = 4
-
-_NOISE_PACKER_FUNC = (None,
-                      (c_float * 1),
-                      (c_float * 2),
-                      (c_float * 3),
-                      (c_float * 4),
-                      )
-
-def noise_new(dim, h=NOISE_DEFAULT_HURST, l=NOISE_DEFAULT_LACUNARITY, random=0):
-    return _lib.TCOD_noise_new(dim, c_float(h), c_float(l), random)
-
-def noise_set_type(n, typ) :
-    _lib.TCOD_noise_set_type(n,typ)
-
-def noise_get(n, f, typ=NOISE_DEFAULT):
-    return _lib.TCOD_noise_get_ex(n, _NOISE_PACKER_FUNC[len(f)](*f), typ)
-
-def noise_get_fbm(n, f, oc, typ=NOISE_DEFAULT):
-    return _lib.TCOD_noise_get_fbm_ex(n, _NOISE_PACKER_FUNC[len(f)](*f), c_float(oc), typ)
-
-def noise_get_turbulence(n, f, oc, typ=NOISE_DEFAULT):
-    return _lib.TCOD_noise_get_turbulence_ex(n, _NOISE_PACKER_FUNC[len(f)](*f), c_float(oc), typ)
-
-def noise_delete(n):
-    _lib.TCOD_noise_delete(n)
-
-############################
-# fov module
-############################
-_lib.TCOD_map_is_in_fov.restype = c_bool
-_lib.TCOD_map_is_transparent.restype = c_bool
-_lib.TCOD_map_is_walkable.restype = c_bool
-
-FOV_BASIC = 0
-FOV_DIAMOND = 1
-FOV_SHADOW = 2
-FOV_PERMISSIVE_0 = 3
-FOV_PERMISSIVE_1 = 4
-FOV_PERMISSIVE_2 = 5
-FOV_PERMISSIVE_3 = 6
-FOV_PERMISSIVE_4 = 7
-FOV_PERMISSIVE_5 = 8
-FOV_PERMISSIVE_6 = 9
-FOV_PERMISSIVE_7 = 10
-FOV_PERMISSIVE_8 = 11
-FOV_RESTRICTIVE = 12
-NB_FOV_ALGORITHMS = 13
-
-def FOV_PERMISSIVE(p) :
-    return FOV_PERMISSIVE_0+p
-
-def map_new(w, h):
-    return _lib.TCOD_map_new(w, h)
-
-def map_copy(source, dest):
-    return _lib.TCOD_map_copy(source, dest)
-
-def map_set_properties(m, x, y, isTrans, isWalk):
-    _lib.TCOD_map_set_properties(m, x, y, c_int(isTrans), c_int(isWalk))
-
-def map_clear(m,walkable=False,transparent=False):
-    _lib.TCOD_map_clear(m,c_int(walkable),c_int(transparent))
-
-def map_compute_fov(m, x, y, radius=0, light_walls=True, algo=FOV_RESTRICTIVE ):
-    _lib.TCOD_map_compute_fov(m, x, y, c_int(radius), c_bool(light_walls), c_int(algo))
-
-def map_is_in_fov(m, x, y):
-    return _lib.TCOD_map_is_in_fov(m, x, y)
-
-def map_is_transparent(m, x, y):
-    return _lib.TCOD_map_is_transparent(m, x, y)
-
-def map_is_walkable(m, x, y):
-    return _lib.TCOD_map_is_walkable(m, x, y)
-
-def map_delete(m):
-    return _lib.TCOD_map_delete(m)
-
-def map_get_width(map):
-    return _lib.TCOD_map_get_width(map)
-
-def map_get_height(map):
-    return _lib.TCOD_map_get_height(map)
-
-############################
-# pathfinding module
-############################
-_lib.TCOD_path_compute.restype = c_bool
-_lib.TCOD_path_is_empty.restype = c_bool
-_lib.TCOD_path_walk.restype = c_bool
-
-PATH_CBK_FUNC = CFUNCTYPE(c_float, c_int, c_int, c_int, c_int, py_object)
-
-def path_new_using_map(m, dcost=1.41):
-    return (_lib.TCOD_path_new_using_map(c_void_p(m), c_float(dcost)), None)
-
-def path_new_using_function(w, h, func, userdata=0, dcost=1.41):
-    cbk_func = PATH_CBK_FUNC(func)
-    return (_lib.TCOD_path_new_using_function(w, h, cbk_func,
-            py_object(userdata), c_float(dcost)), cbk_func)
-
-def path_compute(p, ox, oy, dx, dy):
-    return _lib.TCOD_path_compute(p[0], ox, oy, dx, dy)
-
-def path_get_origin(p):
-    x = c_int()
-    y = c_int()
-    _lib.TCOD_path_get_origin(p[0], byref(x), byref(y))
-    return x.value, y.value
-
-def path_get_destination(p):
-    x = c_int()
-    y = c_int()
-    _lib.TCOD_path_get_destination(p[0], byref(x), byref(y))
-    return x.value, y.value
-
-def path_size(p):
-    return _lib.TCOD_path_size(p[0])
-
-def path_reverse(p):
-    _lib.TCOD_path_reverse(p[0])  
-
-def path_get(p, idx):
-    x = c_int()
-    y = c_int()
-    _lib.TCOD_path_get(p[0], idx, byref(x), byref(y))
-    return x.value, y.value
-
-def path_is_empty(p):
-    return _lib.TCOD_path_is_empty(p[0])
-
-def path_walk(p, recompute):
-    x = c_int()
-    y = c_int()
-    if _lib.TCOD_path_walk(p[0], byref(x), byref(y), c_int(recompute)):
-        return x.value, y.value
-    return None,None
-
-def path_delete(p):
-    _lib.TCOD_path_delete(p[0])
-
-_lib.TCOD_dijkstra_path_set.restype = c_bool
-_lib.TCOD_dijkstra_is_empty.restype = c_bool
-_lib.TCOD_dijkstra_path_walk.restype = c_bool
-_lib.TCOD_dijkstra_get_distance.restype = c_float
-
-def dijkstra_new(m, dcost=1.41):
-    return (_lib.TCOD_dijkstra_new(c_void_p(m), c_float(dcost)), None)
-
-def dijkstra_new_using_function(w, h, func, userdata=0, dcost=1.41):
-    cbk_func = PATH_CBK_FUNC(func)
-    return (_lib.TCOD_path_dijkstra_using_function(w, h, cbk_func,
-            py_object(userdata), c_float(dcost)), cbk_func)
-
-def dijkstra_compute(p, ox, oy):
-    _lib.TCOD_dijkstra_compute(p[0], c_int(ox), c_int(oy))
-
-def dijkstra_path_set(p, x, y):
-    return _lib.TCOD_dijkstra_path_set(p[0], c_int(x), c_int(y))
-
-def dijkstra_get_distance(p, x, y):
-    return _lib.TCOD_dijkstra_get_distance(p[0], c_int(x), c_int(y))
-
-def dijkstra_size(p):
-    return _lib.TCOD_dijkstra_size(p[0])
-
-def dijkstra_reverse(p):
-    _lib.TCOD_dijkstra_reverse(p[0])
-
-def dijkstra_get(p, idx):
-    x = c_int()
-    y = c_int()
-    _lib.TCOD_dijkstra_get(p[0], c_int(idx), byref(x), byref(y))
-    return x.value, y.value
-
-def dijkstra_is_empty(p):
-    return _lib.TCOD_dijkstra_is_empty(p[0])
-
-def dijkstra_path_walk(p):
-    x = c_int()
-    y = c_int()
-    if _lib.TCOD_dijkstra_path_walk(p[0], byref(x), byref(y)):
-        return x.value, y.value
-    return None,None
-
-def dijkstra_delete(p):
-    _lib.TCOD_dijkstra_delete(p[0])
-
-############################
-# bsp module
-############################
-class _CBsp(Structure):
-    _fields_ = [('next', c_void_p),
-                ('father', c_void_p),
-                ('son', c_void_p),
-                ('x', c_int),
-                ('y', c_int),
-                ('w', c_int),
-                ('h', c_int),
-                ('position', c_int),
-                ('level', c_uint8),
-                ('horizontal', c_bool),
-                ]
-
-_lib.TCOD_bsp_new_with_size.restype = POINTER(_CBsp)
-_lib.TCOD_bsp_left.restype = POINTER(_CBsp)
-_lib.TCOD_bsp_right.restype = POINTER(_CBsp)
-_lib.TCOD_bsp_father.restype = POINTER(_CBsp)
-_lib.TCOD_bsp_is_leaf.restype = c_bool
-_lib.TCOD_bsp_contains.restype = c_bool
-_lib.TCOD_bsp_find_node.restype = POINTER(_CBsp)
-
-BSP_CBK_FUNC = CFUNCTYPE(c_int, c_void_p, c_void_p)
-
-# python class encapsulating the _CBsp pointer
-class Bsp(object):
-    def __init__(self, cnode):
-        pcbsp = cast(cnode, POINTER(_CBsp))
-        self.p = pcbsp
-
-    def getx(self):
-        return self.p.contents.x
-    def setx(self, value):
-        self.p.contents.x = value
-    x = property(getx, setx)
-
-    def gety(self):
-        return self.p.contents.y
-    def sety(self, value):
-        self.p.contents.y = value
-    y = property(gety, sety)
-
-    def getw(self):
-        return self.p.contents.w
-    def setw(self, value):
-        self.p.contents.w = value
-    w = property(getw, setw)
-
-    def geth(self):
-        return self.p.contents.h
-    def seth(self, value):
-        self.p.contents.h = value
-    h = property(geth, seth)
-
-    def getpos(self):
-        return self.p.contents.position
-    def setpos(self, value):
-        self.p.contents.position = value
-    position = property(getpos, setpos)
-
-    def gethor(self):
-        return self.p.contents.horizontal
-    def sethor(self,value):
-        self.p.contents.horizontal = value
-    horizontal = property(gethor, sethor)
-
-    def getlev(self):
-        return self.p.contents.level
-    def setlev(self,value):
-        self.p.contents.level = value
-    level = property(getlev, setlev)
-
-
-def bsp_new_with_size(x, y, w, h):
-    return Bsp(_lib.TCOD_bsp_new_with_size(x, y, w, h))
-
-def bsp_split_once(node, horizontal, position):
-    _lib.TCOD_bsp_split_once(node.p, c_int(horizontal), position)
-
-def bsp_split_recursive(node, randomizer, nb, minHSize, minVSize, maxHRatio,
-                        maxVRatio):
-    _lib.TCOD_bsp_split_recursive(node.p, randomizer, nb, minHSize, minVSize,
-                                  c_float(maxHRatio), c_float(maxVRatio))
-
-def bsp_resize(node, x, y, w, h):
-    _lib.TCOD_bsp_resize(node.p, x, y, w, h)
-
-def bsp_left(node):
-    return Bsp(_lib.TCOD_bsp_left(node.p))
-
-def bsp_right(node):
-    return Bsp(_lib.TCOD_bsp_right(node.p))
-
-def bsp_father(node):
-    return Bsp(_lib.TCOD_bsp_father(node.p))
-
-def bsp_is_leaf(node):
-    return _lib.TCOD_bsp_is_leaf(node.p)
-
-def bsp_contains(node, cx, cy):
-    return _lib.TCOD_bsp_contains(node.p, cx, cy)
-
-def bsp_find_node(node, cx, cy):
-    return Bsp(_lib.TCOD_bsp_find_node(node.p, cx, cy))
-
-def _bsp_traverse(node, callback, userData, func):
-    # convert the c node into a python node
-    #before passing it to the actual callback
-    def node_converter(cnode, data):
-        node = Bsp(cnode)
-        return callback(node, data)
-    cbk_func = BSP_CBK_FUNC(node_converter)
-    func(node.p, cbk_func, userData)
-
-def bsp_traverse_pre_order(node, callback, userData=0):
-    _bsp_traverse(node, callback, userData, _lib.TCOD_bsp_traverse_pre_order)
-
-def bsp_traverse_in_order(node, callback, userData=0):
-    _bsp_traverse(node, callback, userData, _lib.TCOD_bsp_traverse_in_order)
-
-def bsp_traverse_post_order(node, callback, userData=0):
-    _bsp_traverse(node, callback, userData, _lib.TCOD_bsp_traverse_post_order)
-
-def bsp_traverse_level_order(node, callback, userData=0):
-    _bsp_traverse(node, callback, userData, _lib.TCOD_bsp_traverse_level_order)
-
-def bsp_traverse_inverted_level_order(node, callback, userData=0):
-    _bsp_traverse(node, callback, userData,
-                  _lib.TCOD_bsp_traverse_inverted_level_order)
-
-def bsp_remove_sons(node):
-    _lib.TCOD_bsp_remove_sons(node.p)
-
-def bsp_delete(node):
-    _lib.TCOD_bsp_delete(node.p)
-
-############################
-# heightmap module
-############################
-class _CHeightMap(Structure):
-    _fields_=[('w', c_int),
-              ('h', c_int),
-              ('values', POINTER(c_float)),
-              ]
-
-_lib.TCOD_heightmap_new.restype = POINTER(_CHeightMap)
-_lib.TCOD_heightmap_get_value.restype = c_float
-_lib.TCOD_heightmap_has_land_on_border.restype = c_bool
-
-class HeightMap(object):
-    def __init__(self, chm):
-        pchm = cast(chm, POINTER(_CHeightMap))
-        self.p = pchm
-
-    def getw(self):
-        return self.p.contents.w
-    def setw(self, value):
-        self.p.contents.w = value
-    w = property(getw, setw)
-
-    def geth(self):
-        return self.p.contents.h
-    def seth(self, value):
-        self.p.contents.h = value
-    h = property(geth, seth)
-
-def heightmap_new(w, h):
-    phm = _lib.TCOD_heightmap_new(w, h)
-    return HeightMap(phm)
-
-def heightmap_set_value(hm, x, y, value):
-    _lib.TCOD_heightmap_set_value(hm.p, x, y, c_float(value))
-
-def heightmap_add(hm, value):
-    _lib.TCOD_heightmap_add(hm.p, c_float(value))
-
-def heightmap_scale(hm, value):
-    _lib.TCOD_heightmap_scale(hm.p, c_float(value))
-
-def heightmap_clear(hm):
-    _lib.TCOD_heightmap_clear(hm.p)
-
-def heightmap_clamp(hm, mi, ma):
-    _lib.TCOD_heightmap_clamp(hm.p, c_float(mi),c_float(ma))
-
-def heightmap_copy(hm1, hm2):
-    _lib.TCOD_heightmap_copy(hm1.p, hm2.p)
-
-def heightmap_normalize(hm,  mi=0.0, ma=1.0):
-    _lib.TCOD_heightmap_normalize(hm.p, c_float(mi), c_float(ma))
-
-def heightmap_lerp_hm(hm1, hm2, hm3, coef):
-    _lib.TCOD_heightmap_lerp_hm(hm1.p, hm2.p, hm3.p, c_float(coef))
-
-def heightmap_add_hm(hm1, hm2, hm3):
-    _lib.TCOD_heightmap_add_hm(hm1.p, hm2.p, hm3.p)
-
-def heightmap_multiply_hm(hm1, hm2, hm3):
-    _lib.TCOD_heightmap_multiply_hm(hm1.p, hm2.p, hm3.p)
-
-def heightmap_add_hill(hm, x, y, radius, height):
-    _lib.TCOD_heightmap_add_hill(hm.p, c_float( x), c_float( y),
-                                 c_float( radius), c_float( height))
-
-def heightmap_dig_hill(hm, x, y, radius, height):
-    _lib.TCOD_heightmap_dig_hill(hm.p, c_float( x), c_float( y),
-                                 c_float( radius), c_float( height))
-
-def heightmap_rain_erosion(hm, nbDrops, erosionCoef, sedimentationCoef, rnd=0):
-    _lib.TCOD_heightmap_rain_erosion(hm.p, nbDrops, c_float( erosionCoef),
-                                     c_float( sedimentationCoef), rnd)
-
-def heightmap_kernel_transform(hm, kernelsize, dx, dy, weight, minLevel,
-                               maxLevel):
-    FARRAY = c_float * kernelsize
-    IARRAY = c_int * kernelsize
-    cdx = IARRAY(*dx)
-    cdy = IARRAY(*dy)
-    cweight = FARRAY(*weight)
-    _lib.TCOD_heightmap_kernel_transform(hm.p, kernelsize, cdx, cdy, cweight,
-                                         c_float(minLevel), c_float(maxLevel))
-
-def heightmap_add_voronoi(hm, nbPoints, nbCoef, coef, rnd=0):
-    FARRAY = c_float * nbCoef
-    ccoef = FARRAY(*coef)
-    _lib.TCOD_heightmap_add_voronoi(hm.p, nbPoints, nbCoef, ccoef, rnd)
-
-def heightmap_add_fbm(hm, noise, mulx, muly, addx, addy, octaves, delta, scale):
-    _lib.TCOD_heightmap_add_fbm(hm.p, noise, c_float(mulx), c_float(muly),
-                                c_float(addx), c_float(addy),
-                                c_float(octaves), c_float(delta),
-                                c_float(scale))
-def heightmap_scale_fbm(hm, noise, mulx, muly, addx, addy, octaves, delta,
-                        scale):
-    _lib.TCOD_heightmap_scale_fbm(hm.p, noise, c_float(mulx), c_float(muly),
-                                  c_float(addx), c_float(addy),
-                                  c_float(octaves), c_float(delta),
-                                  c_float(scale))
-def heightmap_dig_bezier(hm, px, py, startRadius, startDepth, endRadius,
-                         endDepth):
-    IARRAY = c_int * 4
-    cpx = IARRAY(*px)
-    cpy = IARRAY(*py)
-    _lib.TCOD_heightmap_dig_bezier(hm.p, cpx, cpy, c_float(startRadius),
-                                   c_float(startDepth), c_float(endRadius),
-                                   c_float(endDepth))
-
-def heightmap_get_value(hm, x, y):
-    return _lib.TCOD_heightmap_get_value(hm.p, x, y)
-
-def heightmap_get_interpolated_value(hm, x, y):
-    return _lib.TCOD_heightmap_get_interpolated_value(hm.p, c_float(x),
-                                                     c_float(y))
-
-def heightmap_get_slope(hm, x, y):
-    return _lib.TCOD_heightmap_get_slope(hm.p, x, y)
-
-def heightmap_get_normal(hm, x, y, waterLevel):
-    FARRAY = c_float * 3
-    cn = FARRAY()
-    _lib.TCOD_heightmap_get_normal(hm.p, c_float(x), c_float(y), cn,
-                                   c_float(waterLevel))
-    return cn[0], cn[1], cn[2]
-
-def heightmap_count_cells(hm, mi, ma):
-    return _lib.TCOD_heightmap_count_cells(hm.p, c_float(mi), c_float(ma))
-
-def heightmap_has_land_on_border(hm, waterlevel):
-    return _lib.TCOD_heightmap_has_land_on_border(hm.p, c_float(waterlevel))
-
-def heightmap_get_minmax(hm):
-    mi = c_float()
-    ma = c_float()
-    _lib.TCOD_heightmap_get_minmax(hm.p, byref(mi), byref(ma))
-    return mi.value, ma.value
-
-def heightmap_delete(hm):
-    _lib.TCOD_heightmap_delete(hm.p)
-
-
-############################
-# name generator module
-############################
-_lib.TCOD_namegen_generate.restype = c_char_p
-_lib.TCOD_namegen_generate_custom.restype = c_char_p
-
-def namegen_parse(filename,random=0) :
-    _lib.TCOD_namegen_parse(filename,random)
-
-def namegen_generate(name) :
-    return _lib.TCOD_namegen_generate(name, 0)
-
-def namegen_generate_custom(name, rule) :
-    return _lib.TCOD_namegen_generate(name, rule, 0)
-
-def namegen_get_sets():
-    nb=_lib.TCOD_namegen_get_nb_sets_wrapper()
-    SARRAY = c_char_p * nb;
-    setsa = SARRAY()
-    _lib.TCOD_namegen_get_sets_wrapper(setsa)
-    return list(setsa)
-
-def namegen_destroy() :
-    _lib.TCOD_namegen_destroy()
-
-
+    return
+
+
+####################################################################################### - MAP MODES - ####################################################################################
+
+# --------------------------------------------------------------------------------- Print Map (Terrain) --------------------------------------------------------------------------------
+
+def TerrainMap(World):
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
+            hm_v = World[x][y].height
+            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '0', libtcod.blue,
+                                        libtcod.black)
+            if hm_v > 0.1:
+                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '1', libtcod.blue,
+                                            libtcod.black)
+            if hm_v > 0.2:
+                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '2', Palette[0],
+                                            libtcod.black)
+            if hm_v > 0.3:
+                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '3', Palette[0],
+                                            libtcod.black)
+            if hm_v > 0.4:
+                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '4', Palette[0],
+                                            libtcod.black)
+            if hm_v > 0.5:
+                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '5', Palette[0],
+                                            libtcod.black)
+            if hm_v > 0.6:
+                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '6', Palette[0],
+                                            libtcod.black)
+            if hm_v > 0.7:
+                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '7', Palette[0],
+                                            libtcod.black)
+            if hm_v > 0.8:
+                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '8', libtcod.dark_sepia,
+                                            libtcod.black)
+            if hm_v > 0.9:
+                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '9', libtcod.light_gray,
+                                            libtcod.black)
+            if hm_v > 0.99:
+                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '^', libtcod.darker_gray,
+                                            libtcod.black)
+    libtcod.console_flush()
+    return
+
+
+def BiomeMap(Chars, Colors):
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
+            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, Chars[x][y], Colors[x][y],
+                                        libtcod.black)
+
+    libtcod.console_flush()
+    return
+
+
+def HeightGradMap(
+        World):  # ------------------------------------------------------------ Print Map (Heightmap Gradient) -------------------------------------------------------------------
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
+            hm_v = World[x][y].height
+            HeightColor = libtcod.Color(255, 255, 255)
+            libtcod.color_set_hsv(HeightColor, 0, 0,
+                                  hm_v)  # Set lightness to hm_v so higher heightmap value -> "whiter"
+            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '\333', HeightColor,
+                                        libtcod.black)
+    libtcod.console_flush()
+    return
+
+
+def TempGradMap(
+        World):  # ------------------------------------------------------------ Print Map (Surface Temperature Gradient) white -> cold red -> warm --------------------------------
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
+            tempv = World[x][y].temp
+            tempcolor = libtcod.color_lerp(libtcod.white, libtcod.red, tempv)
+            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '\333', tempcolor,
+                                        libtcod.black)
+    libtcod.console_flush()
+    return
+
+
+def PrecipGradMap(
+        World):  # ------------------------------------------------------------ Print Map (Precipitation Gradient) white -> low blue -> high --------------------------------
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
+            tempv = World[x][y].precip
+            tempcolor = libtcod.color_lerp(libtcod.white, libtcod.light_blue, tempv)
+            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '\333', tempcolor,
+                                        libtcod.black)
+    libtcod.console_flush()
+    return
+
+
+def DrainageGradMap(
+        World):  # ------------------------------------------------------------ Print Map (Drainage Gradient) brown -> low white -> high --------------------------------
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
+            drainv = World[x][y].drainage
+            draincolor = libtcod.color_lerp(libtcod.darkest_orange, libtcod.white, drainv)
+            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '\333', draincolor,
+                                        libtcod.black)
+    libtcod.console_flush()
+    return
+
+
+def ProsperityGradMap(
+        World):  # ------------------------------------------------------------ Print Map (Prosperity Gradient) white -> low green -> high --------------------------------
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
+            prosperitynv = World[x][y].prosperity
+            prosperitycolor = libtcod.color_lerp(libtcod.white, libtcod.darker_green, prosperitynv)
+            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '\333', prosperitycolor,
+                                        libtcod.black)
+    libtcod.console_flush()
+    return
+
+
+def NormalMap(
+        World):  # ------------------------------------------------------------ Normal Map (Biome + Entities) --------------------------------
+
+    Chars = [[0 for y in range(WORLD_HEIGHT)] for x in range(WORLD_WIDTH)]
+    Colors = [[0 for y in range(WORLD_HEIGHT)] for x in range(WORLD_WIDTH)]
+
+    def SymbolDictionary(x):
+        char = ''
+        if x == 15 or x == 8:
+            if randint(1, 2) == 2:
+                char = 251
+            else:
+                char = ','
+        if x == 1:
+            if randint(1, 2) == 2:
+                char = 244
+            else:
+                char = 131
+        if x == 2:
+            if randint(1, 2) == 2:
+                char = '"'
+            else:
+                char = 163
+        return {
+            0: '\367',
+            1: char,
+            2: char,
+            3: 'n',
+            4: '\367',
+            5: 24,
+            6: 6 - randint(0, 1),
+            8: char,
+            9: 127,
+            10: 30,
+            11: 176,
+            12: 177,
+            13: 178,
+            14: 'n',
+            15: char,
+            16: 139
+        }[x]
+
+    def ColorDictionary(x):
+        badlands = libtcod.Color(204, 159, 81)
+        icecolor = libtcod.Color(176, 223, 215)
+        darkgreen = libtcod.Color(68, 158, 53)
+        lightgreen = libtcod.Color(131, 212, 82)
+        water = libtcod.Color(13, 103, 196)
+        mountain = libtcod.Color(185, 192, 162)
+        desert = libtcod.Color(255, 218, 90)
+        return {
+            0: water,
+            1: darkgreen,
+            2: lightgreen,
+            3: lightgreen,
+            4: desert,
+            5: darkgreen,
+            6: darkgreen,
+            8: badlands,
+            9: mountain,
+            10: mountain,
+            11: icecolor,
+            12: icecolor,
+            13: icecolor,
+            14: darkgreen,
+            15: lightgreen,
+            16: darkgreen
+        }[x]
+
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
+            Chars[x][y] = SymbolDictionary(World[x][y].biomeID)
+            Colors[x][y] = ColorDictionary(World[x][y].biomeID)
+            if World[x][y].hasRiver:
+                Chars[x][y] = 'o'
+                Colors[x][y] = libtcod.light_blue
+
+    return Chars, Colors
+
+
+###################################################################################### - Startup - ######################################################################################
+
+# Start Console and set costum font
+libtcod.console_set_custom_font("Andux_cp866ish.png", libtcod.FONT_LAYOUT_ASCII_INROW)
+libtcod.console_init_root(SCREEN_WIDTH, SCREEN_HEIGHT, 'pyWorld', False,
+                          libtcod.RENDERER_SDL)  # Set True for Fullscreen
+
+# Palette
+Palette = [libtcod.Color(255, 45, 33),  # Red
+           libtcod.Color(254, 80, 0),  # Orange
+           libtcod.Color(0, 35, 156),  # Blue
+           libtcod.Color(71, 45, 96),  # Purple
+           libtcod.Color(0, 135, 199),  # Ocean Blue
+           libtcod.Color(254, 221, 0),  # Yellow
+           libtcod.Color(255, 255, 255),  # White
+           libtcod.Color(99, 102, 106)]  # Gray
+
+# libtcod.sys_set_fps(30)
+# libtcod.console_set_fullscreen(True)
+
+################################################################################# - Main Cycle / Input - ##################################################################################
+
+isRunning = False
+needUpdate = False
+
+# World Gen
+World = [[0 for y in range(WORLD_HEIGHT)] for x in range(WORLD_WIDTH)]
+World = MasterWorldGen()
+
+# Normal Map Initialization
+Chars, Colors = NormalMap(World)
+
+# Read Races
+Races = ReadRaces()
+
+# Read Governments
+Govern = ReadGovern()
+
+# Civ Gen
+Civs = [0 for x in range(CIVILIZED_CIVS + TRIBAL_CIVS)]
+Civs = CivGen(Races, Govern)
+
+# Setup Civs
+Civs = SetupCivs(Civs, World, Chars, Colors)
+
+# Print Map
+BiomeMap(Chars, Colors)
+
+# Month 0
+Month = 0
+
+# Reset Wars
+Wars = []
+del Wars[:]
+
+# Select Map Mode
+while not libtcod.console_is_window_closed():
+
+    # Simulation
+    while isRunning == True:
+
+        ProcessCivs(World, Civs, Chars, Colors, Month)
+
+        # DEBUG Print Mounth
+        Month += 1
+        display_data(f'Month: {Month}')
+
+
+        # End Simulation
+        libtcod.console_check_for_keypress(True)
+        if libtcod.console_is_key_pressed(libtcod.KEY_SPACE):
+            timer = 0
+            isRunning = False
+            display_data("*PAUSED*")
+            time.sleep(1)
+
+        # Flush Console
+        if needUpdate:
+            BiomeMap(Chars, Colors)
+            needUpdate = False
+
+    key = libtcod.console_wait_for_keypress(True)
+
+    # Start Simulation
+    if libtcod.console_is_key_pressed(libtcod.KEY_SPACE):
+        isRunning = True
+        display_data("*RUNNING*")
+        time.sleep(1)
+
+    # Profiler
+    if libtcod.console_is_key_pressed(libtcod.KEY_ESCAPE):
+        isRunning = False
+
+        pr.disable()
+        pr.print_stats(sort='time')
+
+    if key.vk == libtcod.KEY_CHAR:
+        if key.c == ord('t'):
+            TerrainMap(World)
+        elif key.c == ord('h'):
+            HeightGradMap(World)
+        elif key.c == ord('w'):
+            TempGradMap(World)
+        elif key.c == ord('p'):
+            PrecipGradMap(World)
+        elif key.c == ord('d'):
+            DrainageGradMap(World)
+        elif key.c == ord('f'):
+            ProsperityGradMap(World)
+        elif key.c == ord('b'):
+            BiomeMap(Chars, Colors)
+        elif key.c == ord('r'):
+
+            display_data("\n" * 100)
+            display_data(" * NEW WORLD *")
+            Month = 0
+            Wars = []
+            del Wars[:]
+            World = MasterWorldGen()
+            Races = ReadRaces()
+            Govern = ReadGovern()
+            Civs = CivGen(Races, Govern)
+            Chars, Colors = NormalMap(World)
+            SetupCivs(Civs, World, Chars, Colors)
+            BiomeMap(Chars, Colors)

@@ -21,20 +21,20 @@ def Temperature(temp: HeightmapType, hm: HeightmapType):
     for x in range(WORLD_WIDTH):
         for y in range(WORLD_HEIGHT):
             heighteffect = 0
-            if y > WORLD_HEIGHT / 2:
+            if y > WORLD_HEIGHT // 2:
                 libtcod.heightmap_set_value(temp, x, y, WORLD_HEIGHT - y - heighteffect)
             else:
                 libtcod.heightmap_set_value(temp, x, y, y - heighteffect)
             heighteffect = libtcod.heightmap_get_value(hm, x, y)
             if heighteffect > 0.8:
                 heighteffect = heighteffect * 5
-                if y > WORLD_HEIGHT / 2:
+                if y > WORLD_HEIGHT // 2:
                     libtcod.heightmap_set_value(temp, x, y, WORLD_HEIGHT - y - heighteffect)
                 else:
                     libtcod.heightmap_set_value(temp, x, y, y - heighteffect)
             if heighteffect < 0.25:
                 heighteffect = heighteffect * 10
-                if y > WORLD_HEIGHT / 2:
+                if y > WORLD_HEIGHT // 2:
                     libtcod.heightmap_set_value(temp, x, y, WORLD_HEIGHT - y - heighteffect)
                 else:
                     libtcod.heightmap_set_value(temp, x, y, y - heighteffect)
