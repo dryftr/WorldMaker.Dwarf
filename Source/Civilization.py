@@ -8,6 +8,27 @@ from Source.Model.Army import Army
 from Source.Model.War import War
 from Source.Site import CivSite, NewSite
 
+import os
+from logger_config import logger, setup_logging
+
+def display_data(data):
+    """
+    Display data by printing or logging depending on the operating system.
+    On Windows, it prints to the console; on Linux, it logs to a file.
+
+    Parameters:
+    - data: The data to be displayed.
+
+    Returns:
+    None
+    """
+    if os.name == 'nt':  # Windows
+        print(data)
+    elif os.name == 'posix':  # Linux
+        logger.info(data)
+    # honestly I'd like to be able to support other OS's as well, but need to figure out how to do that.
+    #else:
+    #    raise NotImplementedError("OS not supported.")
 
 def SetupCivs(Civs, World, Chars, Colors):
     for x in range(len(Civs)):
@@ -53,20 +74,20 @@ def SetupCivs(Civs, World, Chars, Colors):
 
         Civs[x].PrintInfo()
 
-    print('- Civs Setup -')
+    display_data('- Civs Setup -')
 
-    print(' * Civ Gen DONE *')
+    display_data(' * Civ Gen DONE *')
 
     return Civs
 
 
 def ProcessCivs(World, Civs, Chars, Colors, Month):
-    print("------------------------------------------")
+    display_data("------------------------------------------")
 
     for x in range(CIVILIZED_CIVS + TRIBAL_CIVS):
 
-        print(Civs[x].Name)
-        print(Civs[x].Race.Name)
+        display_data(Civs[x].Name)
+        display_data(Civs[x].Race.Name)
 
         Civs[x].TotalPopulation = 0
 
@@ -74,9 +95,9 @@ def ProcessCivs(World, Civs, Chars, Colors, Month):
         for y in range(len(Civs[x].Sites)):
 
             # Population
-            NewPop = int(round(Civs[x].Sites[y].Population * Civs[x].Race.ReproductionSpeed / 1500))
+            NewPop = int(round(Civs[x].Sites[y].Population * Civs[x].Race.ReproductionSpeed // 1500))
 
-            if Civs[x].Sites[y].Population > Civs[x].Sites[y].popcap / 2:
+            if Civs[x].Sites[y].Population > Civs[x].Sites[y].popcap // 2:
                 NewPop /= 6
 
             Civs[x].Sites[y].Population += NewPop
@@ -85,7 +106,7 @@ def ProcessCivs(World, Civs, Chars, Colors, Month):
             if Civs[x].Sites[y].Population > Civs[x].Sites[y].popcap:
                 Civs[x].Sites[y].Population = int(round(Civs[x].Sites[y].popcap))
                 if len(Civs[x].Sites) < CIV_MAX_SITES:
-                    Civs[x].Sites[y].Population = int(round(Civs[x].Sites[y].popcap / 2))
+                    Civs[x].Sites[y].Population = int(round(Civs[x].Sites[y].popcap // 2))
                     Civs[x] = NewSite(Civs[x], Civs[x].Sites[y], World, Chars, Colors)
 
             Civs[x].TotalPopulation += Civs[x].Sites[y].Population
@@ -111,19 +132,19 @@ def ProcessCivs(World, Civs, Chars, Colors, Month):
                                                               Civs[a].Sites[0].y,
                                                               Civs[a],
                                                               Civs[a].TotalPopulation * Civs[
-                                                                  a].Government.Militarization / 100)
+                                                                  a].Government.Militarization // 100)
                                 Civs[a].atWar = True
                             if Civs[x].atWar == False:  # if not already at war form new army
                                 Source.Model.Army.Army = Army(Civs[x].Sites[0].x,
                                                               Civs[x].Sites[0].y,
                                                               Civs[x],
                                                               Civs[x].TotalPopulation * Civs[
-                                                                  x].Government.Militarization / 100)
+                                                                  x].Government.Militarization // 100)
                                 Civs[x].atWar = True
 
-            print("X:", Civs[x].Sites[y].x, "Y:", Civs[x].Sites[y].y, "Population:", Civs[x].Sites[y].Population)
+            display_data(f"X: {Civs[x].Sites[y].x}, Y: {Civs[x].Sites[y].y}, Population: {Civs[x].Sites[y].Population}")
 
-        print(Source.Model.Army.Army.x, Source.Model.Army.Army.y, Source.Model.Army.Army.Size, '\n')
+        display_data(f"Army Position: ({Source.Model.Army.Army.x}, {Source.Model.Army.Army.y}) Size: {Source.Model.Army.Army.Size}\n")
 
     return
 
@@ -139,11 +160,11 @@ class Civ:
         self.Aggression = Race.Aggressiveness + Government.Aggressiveness
 
     def PrintInfo(self):
-        print(self.Name)
-        print(self.Race.Name)
-        print(self.Government.Name)
-        print('Aggression:', self.Aggression)
-        print('Suitable Sites:', len(self.SuitableSites), '\n')
+        display_data(self.Name)
+        display_data(self.Race.Name)
+        display_data(self.Government.Name)
+        display_data(f"Aggression: {self.Aggression}")
+        display_data(f"Suitable Sites: {len(self.SuitableSites)}\n")
 
     Sites = []
     SuitableSites = []

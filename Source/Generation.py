@@ -14,9 +14,30 @@ from Source.Tectonic import TectonicGen
 from Source.Temperature import Temperature
 from Source.Typing import HeightmapType
 
+import os
+from logger_config import logger, setup_logging
+
+def display_data(data):
+    """
+    Display data by printing or logging depending on the operating system.
+    On Windows, it prints to the console; on Linux, it logs to a file.
+
+    Parameters:
+    - data: The data to be displayed.
+
+    Returns:
+    None
+    """
+    if os.name == 'nt':  # Windows
+        print(data)
+    elif os.name == 'posix':  # Linux
+        logger.info(data)
+    # honestly I'd like to be able to support other OS's as well, but need to figure out how to do that.
+    #else:
+    #    raise NotImplementedError("OS not supported.")
 
 def MasterWorldGen() -> List[List[Tile]]:
-    print(' * World Gen START * ')
+    display_data(' * World Gen START * ')
     StartTime: float = time.time()
 
     # Heightmap
@@ -28,7 +49,7 @@ def MasterWorldGen() -> List[List[Tile]]:
                                    randint(WORLD_HEIGHT // 10, WORLD_HEIGHT - WORLD_HEIGHT // 10),
                                    randint(12, 16),
                                    randint(6, 10))
-    print('- Main Hills -')
+    display_data('- Main Hills -')
 
     for i in range(1000):
         libtcod.heightmap_add_hill(hm,
@@ -36,7 +57,7 @@ def MasterWorldGen() -> List[List[Tile]]:
                                    randint(WORLD_HEIGHT // 10, WORLD_HEIGHT - WORLD_HEIGHT // 10),
                                    randint(2, 4),
                                    randint(6, 10))
-    print('- Small Hills -')
+    display_data('- Small Hills -')
 
     libtcod.heightmap_normalize(hm, 0.0, 1.0)
 
@@ -45,20 +66,20 @@ def MasterWorldGen() -> List[List[Tile]]:
     libtcod.heightmap_add_fbm(noisehm, noise2d, 6, 6, 0, 0, 32, 1, 1)
     libtcod.heightmap_normalize(noisehm, 0.0, 1.0)
     libtcod.heightmap_multiply_hm(hm, noisehm, hm)
-    print('- Apply Simplex -')
+    display_data('- Apply Simplex -')
 
     PoleGen(hm, 0)
-    print('- South Pole -')
+    display_data('- South Pole -')
 
     PoleGen(hm, 1)
-    print('- North Pole -')
+    display_data('- North Pole -')
 
     TectonicGen(hm, 0)
     TectonicGen(hm, 1)
-    print('- Tectonic Gen -')
+    display_data('- Tectonic Gen -')
 
     libtcod.heightmap_rain_erosion(hm, WORLD_WIDTH * WORLD_HEIGHT, 0.07, 0, None)
-    print('- Erosion -')
+    display_data('- Erosion -')
 
     libtcod.heightmap_clamp(hm, 0.0, 1.0)
 
@@ -66,14 +87,14 @@ def MasterWorldGen() -> List[List[Tile]]:
     temp: HeightmapType = libtcod.heightmap_new(WORLD_WIDTH, WORLD_HEIGHT)
     Temperature(temp, hm)
     libtcod.heightmap_normalize(temp, 0.0, 1.0)
-    print('- Temperature Calculation -')
+    display_data('- Temperature Calculation -')
 
     # Precipitation
 
     preciphm: HeightmapType = libtcod.heightmap_new(WORLD_WIDTH, WORLD_HEIGHT)
     Percipitaion(preciphm, temp)
     libtcod.heightmap_normalize(preciphm, 0.0, 1.0)
-    print('- Percipitaion Calculation -')
+    display_data('- Percipitaion Calculation -')
 
     # Drainage
 
@@ -81,12 +102,12 @@ def MasterWorldGen() -> List[List[Tile]]:
     drain = libtcod.noise_new(2, libtcod.NOISE_DEFAULT_HURST, libtcod.NOISE_DEFAULT_LACUNARITY)
     libtcod.heightmap_add_fbm(drainhm, drain, 2, 2, 0, 0, 32, 1, 1)
     libtcod.heightmap_normalize(drainhm, 0.0, 1.0)
-    print('- Drainage Calculation -')
+    display_data('- Drainage Calculation -')
 
     # VOLCANISM - RARE AT SEA FOR NEW ISLANDS (?) RARE AT MOUNTAINS > 0.9 (?) RARE AT TECTONIC BORDERS (?)
 
     elapsed_time = time.time() - StartTime
-    print(' * World Gen DONE *    in: ', elapsed_time, ' seconds')
+    display_data(' * World Gen DONE *    in: ', elapsed_time, ' seconds')
 
     # Initialize Tiles with Map values
     World: List[List[Tile]] = [[0 for y in range(WORLD_HEIGHT)] for x in range(WORLD_WIDTH)]
@@ -94,12 +115,12 @@ def MasterWorldGen() -> List[List[Tile]]:
         for y in range(WORLD_HEIGHT):
             World[x][y] = Tile(hm[y, x], temp[y, x], preciphm[y, x], drainhm[y, x], 0)
 
-    print('- Tiles Initialized -')
+    display_data('- Tiles Initialized -')
 
     # Prosperity
 
     Prosperity(World)
-    print('- Prosperity Calculation -')
+    display_data('- Prosperity Calculation -')
 
     # Biome info to Tile
 
@@ -153,12 +174,14 @@ def MasterWorldGen() -> List[List[Tile]]:
             if World[x][y].height > 0.9:
                 World[x][y].biomeID = 10
 
-    print('- BiomeIDs Atributed -')
+    display_data('- BiomeIDs Atributed -')
 
     # River Gen
     for x in range(1):
         RiverGen(World)
 
-    print('- River Gen -')
-    print(' * Biomes/Rivers Sorted *')
+    display_data('- River Gen -')
+    display_data(' * Biomes/Rivers Sorted *')
+
+    display_data('- World Gen Done -')
     return World
