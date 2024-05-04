@@ -8,3 +8,6 @@ same and then "tail /path/directory/output.log" can be used to follow said log i
 
 I'm just getting started with Python so I'm sure some of this will look "rough" to trained eyes but hey, gotta start 
 somewhere right? We'll see how it goes.
+
+Original Docs
+[text](Readme.md)
