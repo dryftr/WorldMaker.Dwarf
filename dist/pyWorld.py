@@ -4,6 +4,20 @@ from random import randint
 from random import uniform
 import cProfile
 
+## MY IMPORTS - THIS IS TO HANDLE THE WORLDGEN DATA DISPLAY IN THE SECONDARY CONSOLE ##
+import os
+# pyWorld.py or Civilization.py
+from logger_config import logger, setup_logging
+## handle the setup for logging now if this is running on Linux variants
+if os.name == 'nt':  # Windows
+    print("Windows OS detected. Logging disabled. Using console instead.")
+elif os.name == 'posix':  # Linux
+    # Call this function at the start of your script or when you initialize your module
+    setup_logging()
+    logger.info("Linux OS detected. Logging started.")
+    logger.info("----------------------------------------------")
+
+
 pr = cProfile.Profile()
 pr.enable()
 
@@ -87,16 +101,14 @@ class Civ:
         self.Aggression = Race.Aggressiveness + Government.Aggressiveness
 
     def PrintInfo(self):
-        print
-        self.Name
-        print
-        self.Race.Name
-        print
-        self.Government.Name
-        print
-        'Aggression:', self.Aggression
-        print
-        'Suitable Sites:', len(self.SuitableSites), '\n'
+        display_data(
+            self.Name)
+        display_data(
+            self.Race.Name)
+        display_data(
+            self.Government.Name)
+        display_data("Aggression: {}".format(self.Aggression))
+        display_data("Suitable Sites: {}\n".format(len(self.SuitableSites)))
 
     Sites = []
     SuitableSites = []
@@ -128,9 +140,29 @@ class War:
 
 # - General Functions -
 
+def display_data(data):
+    """
+    Display data by printing or logging depending on the operating system.
+    On Windows, it prints to the console; on Linux, it logs to a file.
+
+    Parameters:
+    - data: The data to be displayed.
+
+    Returns:
+    None
+    """
+    if os.name == 'nt':  # Windows
+        print(data)
+    elif os.name == 'posix':  # Linux
+        logger.info(data)
+    # honestly I'd like to be able to support other OS's as well, but need to figure out how to do that.
+    #else:
+    #    raise NotImplementedError("OS not supported.")
+
 def ClearConsole():
-    for x in xrange(SCREEN_WIDTH):
-        for y in xrange(SCREEN_HEIGHT):
+    ### NOTE FOR ME: This never triggered an error...could this be the "second console"? need to track this code better.
+    for x in list(range(SCREEN_WIDTH)):
+        for y in list(range(SCREEN_HEIGHT)):
             libtcod.console_put_char_ex(0, x, y, ' ', libtcod.black, libtcod.black)
 
     libtcod.console_flush()
@@ -303,9 +335,9 @@ def TectonicGen(hm, hor):
             if pos > WORLD_WIDTH - 1:
                 pos = WORLD_WIDTH - 1
 
-                # Apply elevation to borders
-    for x in xrange(WORLD_WIDTH / 10, WORLD_WIDTH - WORLD_WIDTH / 10):
-        for y in xrange(WORLD_HEIGHT / 10, WORLD_HEIGHT - WORLD_HEIGHT / 10):
+    # Apply elevation to borders.
+    for x in list(range(WORLD_WIDTH // 10, WORLD_WIDTH - WORLD_WIDTH // 10)):
+        for y in list(range(WORLD_HEIGHT // 10, WORLD_HEIGHT - WORLD_HEIGHT // 10)):
             if TecTiles[x][y] == 1 and libtcod.heightmap_get_value(hm, x, y) > 0.3:
                 libtcod.heightmap_add_hill(hm, x, y, randint(2, 4), uniform(0.15, 0.18))
 
@@ -313,8 +345,9 @@ def TectonicGen(hm, hor):
 
 
 def Temperature(temp, hm):
-    for x in xrange(WORLD_WIDTH):
-        for y in xrange(WORLD_HEIGHT):
+    # This needed to be upgraded to Python3 using list(range()) instead of xrange()
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
             heighteffect = 0
             if y > WORLD_HEIGHT / 2:
                 libtcod.heightmap_set_value(temp, x, y, WORLD_HEIGHT - y - heighteffect)
@@ -340,8 +373,8 @@ def Temperature(temp, hm):
 def Percipitaion(preciphm, temphm):
     libtcod.heightmap_add(preciphm, 2)
 
-    for x in xrange(WORLD_WIDTH):
-        for y in xrange(WORLD_HEIGHT):
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
             temp = libtcod.heightmap_get_value(temphm, x, y)
 
     precip = libtcod.noise_new(2, libtcod.NOISE_DEFAULT_HURST, libtcod.NOISE_DEFAULT_LACUNARITY)
@@ -413,18 +446,17 @@ def RiverGen(World):
 
 
 def Prosperity(World):
-    for x in xrange(WORLD_WIDTH):
-        for y in xrange(WORLD_HEIGHT):
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
             World[x][y].prosperity = (1.0 - abs(World[x][y].precip - 0.6) + 1.0 - abs(World[x][y].temp - 0.5) +
-                                      World[x][y].drainage) / 3
+                                        World[x][y].drainage) / 3
 
     return
 
 
 def MasterWorldGen():  # ------------------------------------------------------- * MASTER GEN * -------------------------------------------------------------
 
-    print
-    ' * World Gen START * '
+    display_data(' * World Gen START * ')
     starttime = time.time()
 
     # Heightmap
@@ -432,17 +464,15 @@ def MasterWorldGen():  # -------------------------------------------------------
 
     for i in range(250):
         libtcod.heightmap_add_hill(hm, randint(WORLD_WIDTH / 10, WORLD_WIDTH - WORLD_WIDTH / 10),
-                                   randint(WORLD_HEIGHT / 10, WORLD_HEIGHT - WORLD_HEIGHT / 10), randint(12, 16),
-                                   randint(6, 10))
-    print
-    '- Main Hills -'
+                                    randint(WORLD_HEIGHT / 10, WORLD_HEIGHT - WORLD_HEIGHT / 10), randint(12, 16),
+                                    randint(6, 10))
+    display_data('- Main Hills -')
 
     for i in range(1000):
         libtcod.heightmap_add_hill(hm, randint(WORLD_WIDTH / 10, WORLD_WIDTH - WORLD_WIDTH / 10),
-                                   randint(WORLD_HEIGHT / 10, WORLD_HEIGHT - WORLD_HEIGHT / 10), randint(2, 4),
-                                   randint(6, 10))
-    print
-    '- Small Hills -'
+                                    randint(WORLD_HEIGHT / 10, WORLD_HEIGHT - WORLD_HEIGHT / 10), randint(2, 4),
+                                    randint(6, 10))
+    display_data('- Small Hills -')
 
     libtcod.heightmap_normalize(hm, 0.0, 1.0)
 
@@ -451,42 +481,34 @@ def MasterWorldGen():  # -------------------------------------------------------
     libtcod.heightmap_add_fbm(noisehm, noise2d, 6, 6, 0, 0, 32, 1, 1)
     libtcod.heightmap_normalize(noisehm, 0.0, 1.0)
     libtcod.heightmap_multiply_hm(hm, noisehm, hm)
-    print
-    '- Apply Simplex -'
+    display_data('- Apply Simplex -')
 
     PoleGen(hm, 0)
-    print
-    '- South Pole -'
+    display_data('- South Pole -')
 
     PoleGen(hm, 1)
-    print
-    '- North Pole -'
+    display_data('- North Pole -')
 
     TectonicGen(hm, 0)
     TectonicGen(hm, 1)
-    print
-    '- Tectonic Gen -'
-
+    display_data('- Tectonic Gen -')
     libtcod.heightmap_rain_erosion(hm, WORLD_WIDTH * WORLD_HEIGHT, 0.07, 0, 0)
-    print
-    '- Erosion -'
-
+    
+    display_data('- Erosion -')
     libtcod.heightmap_clamp(hm, 0.0, 1.0)
 
     # Temperature
     temp = libtcod.heightmap_new(WORLD_WIDTH, WORLD_HEIGHT)
     Temperature(temp, hm)
     libtcod.heightmap_normalize(temp, 0.0, 1.0)
-    print
-    '- Temperature Calculation -'
+    display_data('- Temperature Calculation -')
 
     # Precipitation
 
     preciphm = libtcod.heightmap_new(WORLD_WIDTH, WORLD_HEIGHT)
     Percipitaion(preciphm, temp)
     libtcod.heightmap_normalize(preciphm, 0.0, 1.0)
-    print
-    '- Percipitaion Calculation -'
+    display_data('- Percipitaion Calculation -')
 
     # Drainage
 
@@ -494,38 +516,34 @@ def MasterWorldGen():  # -------------------------------------------------------
     drain = libtcod.noise_new(2, libtcod.NOISE_DEFAULT_HURST, libtcod.NOISE_DEFAULT_LACUNARITY)
     libtcod.heightmap_add_fbm(drainhm, drain, 2, 2, 0, 0, 32, 1, 1)
     libtcod.heightmap_normalize(drainhm, 0.0, 1.0)
-    print
-    '- Drainage Calculation -'
+    display_data('- Drainage Calculation -')
 
     # VOLCANISM - RARE AT SEA FOR NEW ISLANDS (?) RARE AT MOUNTAINS > 0.9 (?) RARE AT TECTONIC BORDERS (?)
 
     elapsed_time = time.time() - starttime
-    print
-    ' * World Gen DONE *    in: ', elapsed_time, ' seconds'
+    display_data(' * World Gen DONE *  in: {} seconds'.format(elapsed_time))
 
     # Initialize Tiles with Map values
     World = [[0 for y in range(WORLD_HEIGHT)] for x in range(WORLD_WIDTH)]
-    for x in xrange(WORLD_WIDTH):
-        for y in xrange(WORLD_HEIGHT):
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
             World[x][y] = Tile(libtcod.heightmap_get_value(hm, x, y),
                                libtcod.heightmap_get_value(temp, x, y),
                                libtcod.heightmap_get_value(preciphm, x, y),
                                libtcod.heightmap_get_value(drainhm, x, y),
                                0)
 
-    print
-    '- Tiles Initialized -'
+    display_data('- Tiles Initialized -')
 
     # Prosperity
 
     Prosperity(World)
-    print
-    '- Prosperity Calculation -'
+    display_data('- Prosperity Calculation -')
 
     # Biome info to Tile
 
-    for x in xrange(WORLD_WIDTH):
-        for y in xrange(WORLD_HEIGHT):
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
 
             if World[x][y].precip >= 0.10 and World[x][y].precip < 0.33 and World[x][y].drainage < 0.5:
                 World[x][y].biomeID = 3
@@ -574,24 +592,22 @@ def MasterWorldGen():  # -------------------------------------------------------
             if World[x][y].height > 0.9:
                 World[x][y].biomeID = 10
 
-    print
-    '- BiomeIDs Atributed -'
+    display_data('- BiomeIDs Atributed -')
 
     # River Gen
 
     for x in range(1):
         RiverGen(World)
-    print
-    '- River Gen -'
+    display_data('- River Gen -')
 
     # Free Heightmaps
     libtcod.heightmap_delete(hm)
     libtcod.heightmap_delete(temp)
     libtcod.heightmap_delete(noisehm)
 
-    print
-    ' * Biomes/Rivers Sorted *'
+    display_data(' * Biomes/Rivers Sorted *')
 
+    display_data("returning completed world.")
     return World
 
 
@@ -600,7 +616,7 @@ def ReadRaces():
 
     NLines = sum(1 for line in open('Races.txt'))
 
-    NRaces = NLines / 7
+    NRaces = NLines // 7
 
     f = open(RacesFile)
 
@@ -618,8 +634,7 @@ def ReadRaces():
 
     f.close()
 
-    print
-    '- Races Read -'
+    display_data('- Races Read -')
 
     return Races
 
@@ -629,7 +644,7 @@ def ReadGovern():
 
     NLines = sum(1 for line in open('CivilizedGovernment.txt'))
 
-    NGovern = NLines / 5
+    NGovern = NLines // 5
 
     f = open(GovernFile)
 
@@ -646,8 +661,7 @@ def ReadGovern():
 
     f.close()
 
-    print
-    '- Government Types Read -'
+    display_data('- Government Types Read -')
 
     return Governs
 
@@ -699,8 +713,7 @@ def CivGen(Races,
         # Initialize Civ
         Civs.append(Civ(Race, Name, Government, Color, Flag, 0))
 
-    print
-    '- Civs Generated -'
+    display_data('- Civs Generated -')
 
     return Civs
 
@@ -749,11 +762,9 @@ def SetupCivs(Civs, World, Chars, Colors):
 
         Civs[x].PrintInfo()
 
-    print
-    '- Civs Setup -'
+    display_data('- Civs Setup -')
 
-    print
-    ' * Civ Gen DONE *'
+    display_data(' * Civ Gen DONE *')
 
     return Civs
 
@@ -798,15 +809,33 @@ def NewSite(Civ, Origin, World, Chars, Colors):
 
 
 def ProcessCivs(World, Civs, Chars, Colors, Month):
-    print
-    "------------------------------------------"
+    """
+    Process the civilizations in the world by updating their population, sites, and handling diplomacy. This
+    function is called once per month but will become far more advanced as I start developing for my own
+    project.
+    NOTE: Previously this function only used print statements to output info to a secondary Windows console.
+    I am going to add logging so that I can use "tail" to monitor the output in Linux as it was in Windows.
+    Later I can use some version of code from the "os" module to differentiate and use the right method to
+    show the update data from here. Eventually though it should have a GUI inside the game itself to display
+    the data.
+    May just create a new function to do this. Instead of print or log it would be reduced to a function call
+    like DisplayData(thedata) and that function would do the OS check and either log or print depending on the OS.
+    
+    Parameters:
+    - World: The world map where the civilizations exist.
+    - Civs: List of civilizations to process.
+    - Chars: Character representation of the world.
+    - Colors: Color representation of the world.
+    - Month: The current month in the simulation.
+    Returns:
+    None
+    """
+    display_data("------------------------------------------")
 
     for x in range(CIVILIZED_CIVS + TRIBAL_CIVS):
 
-        print
-        Civs[x].Name
-        print
-        Civs[x].Race.Name
+        display_data(Civs[x].Name)
+        display_data(Civs[x].Race.Name)
 
         Civs[x].TotalPopulation = 0
 
@@ -859,12 +888,10 @@ def ProcessCivs(World, Civs, Chars, Colors, Month):
                                                     Civs[x].TotalPopulation * Civs[x].Government.Militarization / 100)
                                 Civs[x].atWar = True
 
-            print
-            "X:", Civs[x].Sites[y].x, "Y:", Civs[x].Sites[y].y, "Population:", Civs[x].Sites[y].Population
+            display_data(f"X: {Civs[x].Sites[y].x}, Y: {Civs[x].Sites[y].y}, Population: {Civs[x].Sites[y].Population}")
 
-        print
-        Civs[x].Army.x, Civs[x].Army.y, Civs[x].Army.Size, '\n'
-
+        display_data(f"Army Position: ({Civs[x].Army.x}, {Civs[x].Army.y}) Size: {Civs[x].Army.Size}\n")
+        
     return
 
 
@@ -873,49 +900,49 @@ def ProcessCivs(World, Civs, Chars, Colors, Month):
 # --------------------------------------------------------------------------------- Print Map (Terrain) --------------------------------------------------------------------------------
 
 def TerrainMap(World):
-    for x in xrange(WORLD_WIDTH):
-        for y in xrange(WORLD_HEIGHT):
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
             hm_v = World[x][y].height
-            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT / 2 - WORLD_HEIGHT / 2, '0', libtcod.blue,
+            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '0', libtcod.blue,
                                         libtcod.black)
             if hm_v > 0.1:
-                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT / 2 - WORLD_HEIGHT / 2, '1', libtcod.blue,
+                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '1', libtcod.blue,
                                             libtcod.black)
             if hm_v > 0.2:
-                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT / 2 - WORLD_HEIGHT / 2, '2', Palette[0],
+                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '2', Palette[0],
                                             libtcod.black)
             if hm_v > 0.3:
-                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT / 2 - WORLD_HEIGHT / 2, '3', Palette[0],
+                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '3', Palette[0],
                                             libtcod.black)
             if hm_v > 0.4:
-                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT / 2 - WORLD_HEIGHT / 2, '4', Palette[0],
+                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '4', Palette[0],
                                             libtcod.black)
             if hm_v > 0.5:
-                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT / 2 - WORLD_HEIGHT / 2, '5', Palette[0],
+                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '5', Palette[0],
                                             libtcod.black)
             if hm_v > 0.6:
-                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT / 2 - WORLD_HEIGHT / 2, '6', Palette[0],
+                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '6', Palette[0],
                                             libtcod.black)
             if hm_v > 0.7:
-                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT / 2 - WORLD_HEIGHT / 2, '7', Palette[0],
+                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '7', Palette[0],
                                             libtcod.black)
             if hm_v > 0.8:
-                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT / 2 - WORLD_HEIGHT / 2, '8', libtcod.dark_sepia,
+                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '8', libtcod.dark_sepia,
                                             libtcod.black)
             if hm_v > 0.9:
-                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT / 2 - WORLD_HEIGHT / 2, '9', libtcod.light_gray,
+                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '9', libtcod.light_gray,
                                             libtcod.black)
             if hm_v > 0.99:
-                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT / 2 - WORLD_HEIGHT / 2, '^', libtcod.darker_gray,
+                libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '^', libtcod.darker_gray,
                                             libtcod.black)
     libtcod.console_flush()
     return
 
 
 def BiomeMap(Chars, Colors):
-    for x in xrange(WORLD_WIDTH):
-        for y in xrange(WORLD_HEIGHT):
-            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT / 2 - WORLD_HEIGHT / 2, Chars[x][y], Colors[x][y],
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
+            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, Chars[x][y], Colors[x][y],
                                         libtcod.black)
 
     libtcod.console_flush()
@@ -924,13 +951,13 @@ def BiomeMap(Chars, Colors):
 
 def HeightGradMap(
         World):  # ------------------------------------------------------------ Print Map (Heightmap Gradient) -------------------------------------------------------------------
-    for x in xrange(WORLD_WIDTH):
-        for y in xrange(WORLD_HEIGHT):
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
             hm_v = World[x][y].height
             HeightColor = libtcod.Color(255, 255, 255)
             libtcod.color_set_hsv(HeightColor, 0, 0,
                                   hm_v)  # Set lightness to hm_v so higher heightmap value -> "whiter"
-            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT / 2 - WORLD_HEIGHT / 2, '\333', HeightColor,
+            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '\333', HeightColor,
                                         libtcod.black)
     libtcod.console_flush()
     return
@@ -938,11 +965,11 @@ def HeightGradMap(
 
 def TempGradMap(
         World):  # ------------------------------------------------------------ Print Map (Surface Temperature Gradient) white -> cold red -> warm --------------------------------
-    for x in xrange(WORLD_WIDTH):
-        for y in xrange(WORLD_HEIGHT):
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
             tempv = World[x][y].temp
             tempcolor = libtcod.color_lerp(libtcod.white, libtcod.red, tempv)
-            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT / 2 - WORLD_HEIGHT / 2, '\333', tempcolor,
+            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '\333', tempcolor,
                                         libtcod.black)
     libtcod.console_flush()
     return
@@ -950,11 +977,11 @@ def TempGradMap(
 
 def PrecipGradMap(
         World):  # ------------------------------------------------------------ Print Map (Precipitation Gradient) white -> low blue -> high --------------------------------
-    for x in xrange(WORLD_WIDTH):
-        for y in xrange(WORLD_HEIGHT):
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
             tempv = World[x][y].precip
             tempcolor = libtcod.color_lerp(libtcod.white, libtcod.light_blue, tempv)
-            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT / 2 - WORLD_HEIGHT / 2, '\333', tempcolor,
+            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '\333', tempcolor,
                                         libtcod.black)
     libtcod.console_flush()
     return
@@ -962,11 +989,11 @@ def PrecipGradMap(
 
 def DrainageGradMap(
         World):  # ------------------------------------------------------------ Print Map (Drainage Gradient) brown -> low white -> high --------------------------------
-    for x in xrange(WORLD_WIDTH):
-        for y in xrange(WORLD_HEIGHT):
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
             drainv = World[x][y].drainage
             draincolor = libtcod.color_lerp(libtcod.darkest_orange, libtcod.white, drainv)
-            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT / 2 - WORLD_HEIGHT / 2, '\333', draincolor,
+            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '\333', draincolor,
                                         libtcod.black)
     libtcod.console_flush()
     return
@@ -974,11 +1001,11 @@ def DrainageGradMap(
 
 def ProsperityGradMap(
         World):  # ------------------------------------------------------------ Print Map (Prosperity Gradient) white -> low green -> high --------------------------------
-    for x in xrange(WORLD_WIDTH):
-        for y in xrange(WORLD_HEIGHT):
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
             prosperitynv = World[x][y].prosperity
             prosperitycolor = libtcod.color_lerp(libtcod.white, libtcod.darker_green, prosperitynv)
-            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT / 2 - WORLD_HEIGHT / 2, '\333', prosperitycolor,
+            libtcod.console_put_char_ex(0, x, y + SCREEN_HEIGHT // 2 - WORLD_HEIGHT // 2, '\333', prosperitycolor,
                                         libtcod.black)
     libtcod.console_flush()
     return
@@ -1053,8 +1080,8 @@ def NormalMap(
             16: darkgreen
         }[x]
 
-    for x in xrange(WORLD_WIDTH):
-        for y in xrange(WORLD_HEIGHT):
+    for x in list(range(WORLD_WIDTH)):
+        for y in list(range(WORLD_HEIGHT)):
             Chars[x][y] = SymbolDictionary(World[x][y].biomeID)
             Colors[x][y] = ColorDictionary(World[x][y].biomeID)
             if World[x][y].hasRiver:
@@ -1129,16 +1156,15 @@ while not libtcod.console_is_window_closed():
 
         # DEBUG Print Mounth
         Month += 1
-        print
-        'Month: ', Month
+        display_data(f'Month: {Month}')
+
 
         # End Simulation
         libtcod.console_check_for_keypress(True)
         if libtcod.console_is_key_pressed(libtcod.KEY_SPACE):
             timer = 0
             isRunning = False
-            print
-            "*PAUSED*"
+            display_data("*PAUSED*")
             time.sleep(1)
 
         # Flush Console
@@ -1151,8 +1177,7 @@ while not libtcod.console_is_window_closed():
     # Start Simulation
     if libtcod.console_is_key_pressed(libtcod.KEY_SPACE):
         isRunning = True
-        print
-        "*RUNNING*"
+        display_data("*RUNNING*")
         time.sleep(1)
 
     # Profiler
@@ -1178,10 +1203,9 @@ while not libtcod.console_is_window_closed():
         elif key.c == ord('b'):
             BiomeMap(Chars, Colors)
         elif key.c == ord('r'):
-            print
-            "\n" * 100
-            print
-            " * NEW WORLD *"
+
+            display_data("\n" * 100)
+            display_data(" * NEW WORLD *")
             Month = 0
             Wars = []
             del Wars[:]
@@ -1192,73 +1216,3 @@ while not libtcod.console_is_window_closed():
             Chars, Colors = NormalMap(World)
             SetupCivs(Civs, World, Chars, Colors)
             BiomeMap(Chars, Colors)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
